@@ -1,0 +1,121 @@
+# ==========================================
+# 🐍 Python (Keshlar va vaqtincha fayllar)
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ==========================================
+# 🗂️ Virtual Muhitlar (Virtual Environments)
+# ==========================================
+# Agar kompyuteringizda local muhit ochgan bo'lsangiz, bular o'tib ketmaydi
+venv/
+.venv/
+env/
+.env-local/
+ENV/
+env.bak/
+venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ==========================================
+# 🔑 Maxfiylik va Sozlamalar (CRITICAL!)
+# ==========================================
+# API kalitlar, parollar va maxfiy ma'lumotlar saqlanadigan fayllar
+.env
+.env.*
+!.env.example     # Misol tariqasidagi fayl o'tib ketishiga ruxsat beramiz
+*.pot
+*.pyc
+secrets.toml
+
+# ==========================================
+# 🚀 Django REST Framework xususiy fayllari
+# ==========================================
+# Agar localda SQLite ishlatib ko'rayotgan bo'lsangiz
+*.sqlite3
+*.sqlite3-journal
+db.sqlite3
+
+# Statik va media fayllar (Bular odatda serverning o'zida saqlanadi yoki S3 ga yuklanadi)
+/backend/services/drf-core-service/staticfiles/
+/backend/services/drf-core-service/media/
+
+# ==========================================
+# ⚡ FastAPI va pytest fayllari
+# ==========================================
+.pytest_cache/
+.htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+htmlcov/
+.hypothesis/
+.ruff_cache/       # Zamonaviy linter Ruff keshi
+.mypy_cache/       # Type-checking keshi
+
+# ==========================================
+# 🐳 Docker xususiy fayllari
+# ==========================================
+.dockerignore
+# Docker-compose local o'zgarishlar fayli (agar ishlatilsa)
+docker-compose.override.yml
+
+# ==========================================
+# 💻 Operatsion Tizimlar fayllari
+# ==========================================
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.lnk
+*.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# ==========================================
+# 🛠️ Dasturlash Muhitlari (IDEs)
+# ==========================================
+# VS Code
+.vscode/
+!.vscode/extensions.json
+
+# PyCharm / JetBrains
+.idea/
+*.iws
+*.iml
+*.ipr
