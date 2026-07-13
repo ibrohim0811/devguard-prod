@@ -4,7 +4,7 @@ from rest_framework.fields import CharField
 
 
 from .validations import validate_phone_number, validate_email  
-from .models import Users, WebApplications
+from .models import Users, WebApplications, TransactionHistory
 
 
 class RegisterSerializer(ModelSerializer):
@@ -64,5 +64,12 @@ class WebApplicationsSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance) 
-        data.update(instance.verif_token)
+        data.update(instance.verif_token())
         return data
+    
+
+class TransactionSerializer(ModelSerializer):
+    class Meta:
+        model = TransactionHistory
+        fields = "__all__"
+        read_only_fields = ["user", "webapp", "payment_id", "status", "payment_date"]

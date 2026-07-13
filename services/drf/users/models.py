@@ -64,3 +64,21 @@ class WebApplications(models.Model):
             "verification_token":self.verification_token
         }
         return data
+    
+
+
+class TransactionHistory(models.Model):
+    class StatusChoices(models.TextChoices):
+        PENDING = 'jarayonda', 'Jarayonda'
+        SUCCESS = 'muvaffaqiyatli', 'Muvaffaqiyatli'
+        DECLINED = 'bekor qilindi', 'Bekor qilindi'
+        TIMEOUT = "muddati o'tdi", "Muddati o'tdi"
+
+    webapp = models.ForeignKey(WebApplications, on_delete=models.CASCADE, related_name="webtransaction")
+    user = models.ForeignKey(Users, on_delete=models.CASCADE, related_name="usertransaction")
+    payment_id = models.CharField(max_length=300, unique=True, default=f"devshield_payment:{uuid.uuid4}")
+    status = models.CharField(max_length=100, choices=StatusChoices.choices, default=StatusChoices.PENDING)
+    payment_date = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.user.username
