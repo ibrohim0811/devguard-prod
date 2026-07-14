@@ -1,3 +1,4 @@
+import os
 import random
 import requests
 from bs4 import BeautifulSoup
@@ -6,21 +7,25 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 from django.core.cache import cache
+from datetime import timezone, timedelta
+from dotenv import load_dotenv
 
+load_dotenv()
 
 
 from rest_framework.generics import (
-    CreateAPIView,
+    DestroyAPIView,
     RetrieveAPIView, RetrieveUpdateAPIView,
     ListCreateAPIView
 )
 
-from rest_framework.decorators import api_view, permission_classes, APIView
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.views import APIView
 
 from .serializers import( 
 RegisterSerializer, ProfileSerializer, 
 WebApplicationsSerializer, TransactionSerializer,
-VerifyOTPSerializer, ResendOTPSerializer
+VerifyOTPSerializer, ResendOTPSerializer, CheckPaymentSerializer
 )
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
@@ -28,7 +33,7 @@ from django.utils.html import strip_tags
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
 
-from .models import Users, WebApplications, TransactionHistory
+from .models import Users, WebApplications, TransactionHistory, ScanHistory
 
 
 
@@ -243,6 +248,24 @@ class WebApplicationsDetailView(RetrieveAPIView):
         return WebApplications.objects.filter(user=self.request.user)
     
 
+@extend_schema(tags=["user/webapps"])
+class WebApplicationDeleteBySlugAPIView(DestroyAPIView):
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'slug' 
+
+    def get_queryset(self):
+        return WebApplications.objects.filter(user=self.request.user)
+        
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(
+            {"message": f"Sayt ({instance.domain}) muvaffaqiyatli o'chirildi! ✅"}, 
+            status=status.HTTP_204_NO_CONTENT
+        )
+    
+
 
 @extend_schema(tags=["user/payment"])
 class TransactionListCreateAPIView(ListCreateAPIView):
@@ -321,4 +344,60 @@ def checkwebtoken(request, slug):
     }, status=status.HTTP_405_METHOD_NOT_ALLOWED)       
                     
 
+@extend_schema(tags=["webapp/payment"], request=CheckPaymentSerializer)
+@permission_classes([IsAuthenticated, ])
+class CheckWebappPayment(APIView):
+    def post(self, request):
+        
+        serializer = CheckPaymentSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        slug = slug = serializer.validated_data['webapp_slug']
+        user = request.user
+        
+        try:
+            webapp = WebApplications.objects.get(slug=slug, user=user)
+        except WebApplications.DoesNotExist:
+            return Response({"error": "Sayt topilmadi!"}, status=status.HTTP_404_NOT_FOUND)
+        
+        if webapp.is_verified:
+
+            last_scan = ScanHistory.objects.filter(webapp=webapp).order_by('-scanned_at').first()
+
+            if last_scan:
+                vaqt_farqi = timezone.now() - last_scan.scanned_at
+
+                if vaqt_farqi < timedelta(days=2):
+                    return Response({
+                        "access": True,
+                        "message": "Oxirgi skandan 2 kun o'tmagan. Skanerlash bepul!"
+                    }, status=status.HTTP_200_OK)
+                
+            if last_scan:
+                vaqt_farqi = timezone.now() - last_scan.scanned_at
+                if vaqt_farqi < timedelta(days=2):
+                    return Response({
+                        "access": True,
+                        "message": "Oxirgi skandan 2 kun o'tmagan. Skanerlash bepul!"
+                    }, status=status.HTTP_200_OK)
+
+            transaction = TransactionHistory.objects.create(
+                webapp=webapp,
+                user=user,
+                amount=20000.00,
+                status=TransactionHistory.StatusChoices.PENDING
+            )
+
+            
+            deeplink = f"https://t.me/{os.getenv("BOT_USERNAME")}?start={transaction.payment_id}"
+
+            return Response({
+                "access": False,
+                "message": "Skanerlash muddati tugagan. Iltimos to'lov qiling.",
+                "deeplink": deeplink
+            }, status=status.HTTP_402_PAYMENT_REQUIRED)
+        return Response({
+            "access":False,
+            "message":"Vebsaytingiz tasdiqdan o'tmagan"
+        }, status=status.HTTP_406_NOT_ACCEPTABLE)
 

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
 from rest_framework.fields import CharField
+from rest_framework.validators import UniqueValidator
 
 
 from .validations import validate_phone_number, validate_email  
@@ -58,6 +59,14 @@ class ProfileSerializer(ModelSerializer):
 
 
 class WebApplicationsSerializer(serializers.ModelSerializer):
+    domain = serializers.URLField(
+        validators=[
+            UniqueValidator(
+                queryset=WebApplications.objects.all(),
+                message="Ushbu domen tizimda allaqachon ro'yxatdan o'tgan! ⚠️"
+            )
+        ]
+    )
     class Meta:
         model = WebApplications
         fields = [
@@ -66,6 +75,7 @@ class WebApplicationsSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'user', 'is_verified', 'verification_token', 'created_at', 'slug']
 
+    
 
     def to_representation(self, instance):
         data = super().to_representation(instance) 
@@ -78,3 +88,7 @@ class TransactionSerializer(ModelSerializer):
         model = TransactionHistory
         fields = "__all__"
         read_only_fields = ["user", "webapp", "payment_id", "status", "payment_date"]
+
+
+class CheckPaymentSerializer(serializers.Serializer):
+    webapp_slug = serializers.CharField(required=True)

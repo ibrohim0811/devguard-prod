@@ -8,7 +8,8 @@ from .views import (
 WebApplicationsListCreateView, WebApplicationsDetailView, 
 RegisterCreateAPIView, ProfileRetrieveAPIView,
 TransactionListCreateAPIView, TransactionDetailAPIView,
-checkwebtoken, VerifyOTPAPIView, ResendOTPAPIView
+checkwebtoken, VerifyOTPAPIView, ResendOTPAPIView,
+WebApplicationDeleteBySlugAPIView, CheckWebappPayment
 )
 
 
@@ -20,6 +21,7 @@ urlpatterns = [
     path('me/webapps/', WebApplicationsListCreateView.as_view(), name="webapps"),
     path('register/', RegisterCreateAPIView.as_view(), name="register"),
     path('me/', ProfileRetrieveAPIView.as_view(), name="me"),
+    path('me/webapp-delete/<slug:slug>', WebApplicationDeleteBySlugAPIView.as_view(), name="webapp_delete"),
     #payment
     path('transaction-histories/', TransactionListCreateAPIView.as_view(), name="payment"),
     path('transaction-history/<slug:payment_id>', TransactionDetailAPIView.as_view(), name="payment"),
@@ -29,5 +31,7 @@ urlpatterns = [
     path('verify-otp/', VerifyOTPAPIView.as_view(), name="verify_otp"),
     path('resend-otp/', ResendOTPAPIView.as_view(), name="resend_otp"),
 
+    #payment
+    path('check-payment/', CheckWebappPayment.as_view(), name="check_payment"),
 
 ]
