@@ -7,7 +7,8 @@ TokenObtainPairView, TokenRefreshView, TokenBlacklistView
 from .views import ( 
 WebApplicationsListCreateView, WebApplicationsDetailView, 
 RegisterCreateAPIView, ProfileRetrieveAPIView,
-TransactionListCreateAPIView, TransactionDetailAPIView
+TransactionListCreateAPIView, TransactionDetailAPIView,
+checkwebtoken, VerifyOTPAPIView, ResendOTPAPIView
 )
 
 
@@ -22,4 +23,11 @@ urlpatterns = [
     #payment
     path('transaction-histories/', TransactionListCreateAPIView.as_view(), name="payment"),
     path('transaction-history/<slug:payment_id>', TransactionDetailAPIView.as_view(), name="payment"),
+    #webcheck
+    path('checkweb/<slug:slug>', checkwebtoken, name="checkwebtoken"),
+    #otp
+    path('verify-otp/', VerifyOTPAPIView.as_view(), name="verify_otp"),
+    path('resend-otp/', ResendOTPAPIView.as_view(), name="resend_otp"),
+
+
 ]
