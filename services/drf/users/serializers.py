@@ -92,3 +92,14 @@ class TransactionSerializer(ModelSerializer):
 
 class CheckPaymentSerializer(serializers.Serializer):
     webapp_slug = serializers.CharField(required=True)
+
+
+class StartScanSerializer(serializers.Serializer):
+    slug = serializers.SlugField(
+        required=True 
+    )
+
+    def validate_slug(self, value):
+        if not WebApplications.objects.filter(slug=value).exists():
+            raise serializers.ValidationError("Bunday Vebsayt topilmadi!")
+        return value

@@ -1,6 +1,9 @@
 import os
+import pika
+import json
 import random
 import requests
+import logging
 from bs4 import BeautifulSoup
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema
@@ -25,7 +28,8 @@ from rest_framework.views import APIView
 from .serializers import( 
 RegisterSerializer, ProfileSerializer, 
 WebApplicationsSerializer, TransactionSerializer,
-VerifyOTPSerializer, ResendOTPSerializer, CheckPaymentSerializer
+VerifyOTPSerializer, ResendOTPSerializer, CheckPaymentSerializer,
+StartScanSerializer
 )
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
@@ -34,7 +38,7 @@ from django.conf import settings
 from django.contrib.auth.hashers import make_password
 
 from .models import Users, WebApplications, TransactionHistory, ScanHistory
-
+from .tasks import send_otp_email_task
 
 
 @extend_schema(tags=['Register'])
@@ -60,33 +64,14 @@ class RegisterCreateAPIView(APIView):
             cache.set(f"temp_user:{email}", user_temp_data, timeout=600)
             cache.set(f"otp:{email}", otp, timeout=600)
 
-            subject = "Ro'yxatdan o'tishni tasdiqlang"
-            from_email = settings.DEFAULT_FROM_EMAIL
-            to_email = [email]
-
-            html_content = render_to_string('emails/otp_email.html', {
-                'full_name': full_name,
-                'otp': otp
-            })
             
-            text_content = strip_tags(html_content)
+            send_otp_email_task.delay(email, full_name, otp)
 
-            try:
-                msg = EmailMultiAlternatives(subject, text_content, from_email, to_email)
-                msg.attach_alternative(html_content, "text/html")  
-                msg.send()  
-
-                return Response({
-                    "message": "Tasdiqlash kodi emailingizga yuborildi."
-                }, status=status.HTTP_200_OK)
-                
-            except Exception as e:
-                return Response({
-                    "error": f"Email yuborishda xatolik yuz berdi: {str(e)}"
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({
+                "message": "Tasdiqlash kodi emailingizga yuborildi."
+            }, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
 
 
 @extend_schema(tags=['Register'])
@@ -175,7 +160,6 @@ class ResendOTPAPIView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            
             cooldown_active = cache.get(f"resend_cooldown:{email}")
             if cooldown_active:
                 return Response(
@@ -188,20 +172,10 @@ class ResendOTPAPIView(APIView):
             cache.set(f"resend_cooldown:{email}", "blocked", timeout=60)
 
             full_name = user_data.get('full_name', 'Foydalanuvchi')
-            subject = "Yangi tasdiqlash kodi — DevShield"
-            from_email = settings.DEFAULT_FROM_EMAIL
-            to_email = [email]
-
-            html_content = render_to_string('emails/otp_email.html', {
-                'full_name': full_name,
-                'otp': new_otp
-            })
-            text_content = strip_tags(html_content)
 
             try:
-                msg = EmailMultiAlternatives(subject, text_content, from_email, to_email)
-                msg.attach_alternative(html_content, "text/html")
-                msg.send()
+            
+                send_otp_email_task.delay(email, full_name, new_otp)
 
                 return Response({
                     "message": "Yangi tasdiqlash kodi emailingizga qayta yuborildi."
@@ -209,10 +183,11 @@ class ResendOTPAPIView(APIView):
 
             except Exception as e:
                 return Response({
-                    "error": f"Email yuborishda xatolik yuz berdi: {str(e)}"
+                    "error": f"Tizim xatoligi (Broker ulanishi): {str(e)}"
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 @extend_schema(tags=['user/Profile'])
@@ -347,6 +322,8 @@ def checkwebtoken(request, slug):
 @extend_schema(tags=["webapp/payment"], request=CheckPaymentSerializer)
 @permission_classes([IsAuthenticated, ])
 class CheckWebappPayment(APIView):
+
+    
     def post(self, request):
         
         serializer = CheckPaymentSerializer(data=request.data)
@@ -401,3 +378,75 @@ class CheckWebappPayment(APIView):
             "message":"Vebsaytingiz tasdiqdan o'tmagan"
         }, status=status.HTTP_406_NOT_ACCEPTABLE)
 
+
+
+
+logger = logging.getLogger(__name__)
+@extend_schema(tags=["web/full-scan"])
+class StartScanView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = StartScanSerializer
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+
+        # 1. Serializer validatsiyasi
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        slug = serializer.validated_data['slug']
+
+        # 2. Bazadan ilovani qidiramiz (va shu userga tegishli ekanini tekshiramiz)
+        try:
+            # Agar model nomi 'WebApplications' bo'lsa shunday qoladi, agar 'WebApplication' bo'lsa to'g'rilab qo'ying
+            web = WebApplications.objects.get(slug=slug, user=request.user)
+        except WebApplications.DoesNotExist:
+            return Response(
+                {"error": "Sizga tegishli bo'lgan bunday ilova topilmadi!"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 3. Vebsayt verify qilinganini tekshiramiz
+        if not web.is_verified:
+            return Response({
+                "message": "Vebsaytingiz hali tekshirilmagan (not verified)!"   
+            }, status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # 4. RabbitMQ-ga xabar yuborish
+        try:
+            # Django tomonda sinxron pika ulanishi:
+            connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+            channel = connection.channel()
+
+            queue_name = 'web_scan_tasks'
+            channel.queue_declare(queue=queue_name, durable=True)
+
+            # Faqat json qila oladigan ma'lumotlarni yozamiz
+            payload = {
+                "url": web.domain,       # Sayt domeni yoki URL-i
+                "user_id": web.user.id,  # User obyekti emas, uning ID-si!
+                "slug": web.slug
+            }
+
+            message_body = json.dumps(payload)
+
+            channel.basic_publish(
+                exchange='',
+                routing_key=queue_name,
+                body=message_body,
+                properties=pika.BasicProperties( # Bu yerda ham pika ishlatiladi
+                    delivery_mode=2,             # Xabar o'chib ketmasligi uchun (persistent)
+                )
+            )
+
+            connection.close() 
+
+            return Response({
+                "message": "Skanerlash muvaffaqiyatli navbatga qo'shildi! 🚀",
+                "status": "QUEUED"
+            }, status=status.HTTP_202_ACCEPTED)
+
+        except Exception as e:
+            logger.error(f"RabbitMQ-ga ulana olmadi: {e}")
+            return Response({
+                "error": "Tizim xatoligi (RabbitMQ ulanishda xato) 🔌"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
