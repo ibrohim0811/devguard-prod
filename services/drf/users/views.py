@@ -381,72 +381,65 @@ class CheckWebappPayment(APIView):
 
 
 
-logger = logging.getLogger(__name__)
-@extend_schema(tags=["web/full-scan"])
-class StartScanView(APIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = StartScanSerializer
-    def post(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data)
+# logger = logging.getLogger(__name__)
+# @extend_schema(tags=["web/full-scan"])
+# class StartScanView(APIView):
+#     permission_classes = [IsAuthenticated]
+#     serializer_class = StartScanSerializer
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.serializer_class(data=request.data)
 
-        # 1. Serializer validatsiyasi
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+#         if not serializer.is_valid():
+#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        slug = serializer.validated_data['slug']
+#         slug = serializer.validated_data['slug']
 
-        # 2. Bazadan ilovani qidiramiz (va shu userga tegishli ekanini tekshiramiz)
-        try:
-            # Agar model nomi 'WebApplications' bo'lsa shunday qoladi, agar 'WebApplication' bo'lsa to'g'rilab qo'ying
-            web = WebApplications.objects.get(slug=slug, user=request.user)
-        except WebApplications.DoesNotExist:
-            return Response(
-                {"error": "Sizga tegishli bo'lgan bunday ilova topilmadi!"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
+#         try:
+#             web = WebApplications.objects.get(user=request.user, slug=slug)
+#         except WebApplications.DoesNotExist:
+#             return Response(
+#                 {"error": "Sizga tegishli bo'lgan bunday vebsayt topilmadi!"}, 
+#                 status=status.HTTP_404_NOT_FOUND
+#             )
 
-        # 3. Vebsayt verify qilinganini tekshiramiz
-        if not web.is_verified:
-            return Response({
-                "message": "Vebsaytingiz hali tekshirilmagan (not verified)!"   
-            }, status=status.HTTP_406_NOT_ACCEPTABLE)
+#         if not web.is_verified:
+#             return Response({
+#                 "message": "Vebsaytingiz hali tekshirilmagan (not verified)!"   
+#             }, status=status.HTTP_406_NOT_ACCEPTABLE)
 
-        # 4. RabbitMQ-ga xabar yuborish
-        try:
-            # Django tomonda sinxron pika ulanishi:
-            connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
-            channel = connection.channel()
+#         try:
+#             connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+#             channel = connection.channel()
 
-            queue_name = 'web_scan_tasks'
-            channel.queue_declare(queue=queue_name, durable=True)
+#             queue_name = 'web_scan_tasks'
+#             channel.queue_declare(queue=queue_name, durable=True)
 
-            # Faqat json qila oladigan ma'lumotlarni yozamiz
-            payload = {
-                "url": web.domain,       # Sayt domeni yoki URL-i
-                "user_id": web.user.id,  # User obyekti emas, uning ID-si!
-                "slug": web.slug
-            }
+#             payload = {
+#                 "url": web.domain,      
+#                 "user_id": web.user.id,  
+#                 "slug": web.slug
+#             }
 
-            message_body = json.dumps(payload)
+#             message_body = json.dumps(payload)
 
-            channel.basic_publish(
-                exchange='',
-                routing_key=queue_name,
-                body=message_body,
-                properties=pika.BasicProperties( # Bu yerda ham pika ishlatiladi
-                    delivery_mode=2,             # Xabar o'chib ketmasligi uchun (persistent)
-                )
-            )
+#             channel.basic_publish(
+#                 exchange='',
+#                 routing_key=queue_name,
+#                 body=message_body,
+#                 properties=pika.BasicProperties( 
+#                     delivery_mode=2,             
+#                 )
+#             )
 
-            connection.close() 
+#             connection.close() 
 
-            return Response({
-                "message": "Skanerlash muvaffaqiyatli navbatga qo'shildi! 🚀",
-                "status": "QUEUED"
-            }, status=status.HTTP_202_ACCEPTED)
+#             return Response({
+#                 "message": "Skanerlash muvaffaqiyatli navbatga qo'shildi! 🚀",
+#                 "status": "QUEUED"
+#             }, status=status.HTTP_202_ACCEPTED)
 
-        except Exception as e:
-            logger.error(f"RabbitMQ-ga ulana olmadi: {e}")
-            return Response({
-                "error": "Tizim xatoligi (RabbitMQ ulanishda xato) 🔌"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+#         except Exception as e:
+#             logger.error(f"RabbitMQ-ga ulana olmadi: {e}")
+#             return Response({
+#                 "error": "Tizim xatoligi (RabbitMQ ulanishda xato) 🔌"
+#             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

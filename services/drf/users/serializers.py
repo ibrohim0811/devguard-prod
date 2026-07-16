@@ -100,6 +100,7 @@ class StartScanSerializer(serializers.Serializer):
     )
 
     def validate_slug(self, value):
+        print(f"SLUG:{value}")
         if not WebApplications.objects.filter(slug=value).exists():
             raise serializers.ValidationError("Bunday Vebsayt topilmadi!")
         return value
