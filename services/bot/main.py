@@ -76,7 +76,7 @@ async def start(msg: types.Message, state: FSMContext, command: CommandObject):
         await msg.answer(
             f"Skanerlash xizmati narxi: 20,000 so'm.\n\n"
             f"💳 Karta raqam: <b><code>{BANK_CARD}</code></b> ({CARD_OWNER})\n\n"
-            f"Iltimos, to'lovni amalga oshirib, chek (rasm) variantini shu yerga yuboring.\n"
+            f"Iltimos, to'lovni amalga oshirib, chek (rasm) variantini shu yerga yuboring.\n",
             # f"Sizning to'lov ID: <code>{payment_id}</code>",
             parse_mode="HTML"
         )

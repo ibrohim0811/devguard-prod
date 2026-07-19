@@ -2,6 +2,7 @@ import os
 import pika
 import json
 import random
+import uuid
 import requests
 import logging
 from bs4 import BeautifulSoup
@@ -14,6 +15,9 @@ from datetime import timezone, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
 
 
 from rest_framework.generics import (
@@ -264,51 +268,78 @@ class TransactionDetailAPIView(RetrieveAPIView):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, ])
 def checkwebtoken(request, slug):
+
     if request.method == 'GET':
         print(f"slug:{slug}")
         webapp = WebApplications.objects.filter(user=request.user, slug=slug).first()
         
         if webapp:
             if not webapp.is_verified:
-                web = webapp
-                web_link = web.domain
-                token = web.verification_token
-                
-                try:
-                    response = requests.get(web_link, timeout=10)
-                    soup = BeautifulSoup(response.text, 'html.parser')
+                if not webapp.is_subdomain:
+                    web = webapp
+                    web_link = web.domain
+                    token = web.verification_token
+                    
+                    try:
+                        response = requests.get(web_link, timeout=10)
+                        soup = BeautifulSoup(response.text, 'html.parser')
 
-                    meta_tag = soup.find('meta', attrs={'name': 'devshield'})
-                    if meta_tag:
-                        
-                        web_token = meta_tag.get('content')
-                        
-                        if web_token == token:
-                            web.is_verified = True
-                            web.save()
-                            return Response({
-                                "success":True,
-                                "message":"Saytingiz tasdiqlandi ✅",
-                                
-                            }, status=status.HTTP_200_OK)
+                        meta_tag = soup.find('meta', attrs={'name': 'devshield'})
+                        if meta_tag:
+                            
+                            web_token = meta_tag.get('content')
+                            
+                            if web_token == token:
+                                web.is_verified = True
+                                web.save()
+                                return Response({
+                                    "success":True,
+                                    "message":"Saytingiz tasdiqlandi ✅",
+                                    
+                                }, status=status.HTTP_200_OK)
+                            else:
+                                return Response({
+                                    "success":True,
+                                    "message":"Saytingizdagi token mos emas ⛔"
+                                }, status=status.HTTP_400_BAD_REQUEST)
                         else:
                             return Response({
                                 "success":True,
-                                "message":"Saytingizdagi token mos emas ⛔"
+                                "message":"❌ Sahifada 'devshield' nomli meta teg topilmadi."
                             }, status=status.HTTP_400_BAD_REQUEST)
-                    else:
+                    except requests.exceptions.RequestException as e:
+                        print(f"checkweb:{e}")
                         return Response({
-                            "success":True,
-                            "message":"❌ Sahifada 'devshield' nomli meta teg topilmadi."
-                        }, status=status.HTTP_400_BAD_REQUEST)
-                except requests.exceptions.RequestException as e:
-                    print(f"checkweb:{e}")
-                    return Response({
-                            "success":False,
-                            "message":"Serverda Xatolik!"
-                        }, status=status.HTTP_502_BAD_GATEWAY)   
+                                "success":False,
+                                "message":"Serverda Xatolik!"
+                            }, status=status.HTTP_502_BAD_GATEWAY)  
+                else:
+                    if not webapp.is_verified:
+                        subdomain = webapp.domain
+                        if not subdomain.startswith(('http://', 'https://')):
+                            subdomain = f"https://{subdomain}"
+                        response = requests.get(f"{subdomain}/devshield")
+                        print(response)
+                        data = response.json()
+
+                        if "devshield" in data:
+                            if data["devshield"] == webapp.verification_token:
+                                webapp.is_verified = True
+                                webapp.save() 
+                                return Response({"message":"Vebsaytingiz tasdiqlandi ✅"}, status=status.HTTP_202_ACCEPTED)
+                            else:
+                                return Response({
+                                    "message":"Token mos emas!"
+                                }, status=status.HTTP_406_NOT_ACCEPTABLE)
+                        else:
+                            return Response({
+                                    "message":"devshield nomli kalit mavjud emas",
+                                    "eslatma": f"{webapp.domain}/devshield endpointiga murojaat qilganda, javob {{'devshield': verification_token}} bo'lishi kerak!"
+                                }, status=status.HTTP_406_NOT_ACCEPTABLE)
+                    else:
+                        return Response({"message":"Bu Vebsayt tekshirilgan"}, status=status.HTTP_200_OK)
             else:
-                Response({
+                return Response({
                     "success":True,
                     "message":"Vebsaytingiz avval tekshirilgan"
                 }, status=status.HTTP_406_NOT_ACCEPTABLE)    
@@ -370,67 +401,101 @@ class CheckWebappPayment(APIView):
         }, status=status.HTTP_406_NOT_ACCEPTABLE)
 
 
+@extend_schema(tags=["web/fullscan"], request=StartScanSerializer)
+class FullScanView(APIView):
+    permission_classes = [IsAuthenticated]
+    def post(self, request, *args, **kwargs):
+        serializer = StartScanSerializer(data=self.request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.error, status=status.HTTP_400_BAD_REQUEST)
+        
+        slug = serializer.validated_data['slug']
+        try:
+            web = WebApplications.objects.filter(user=request.user, slug=slug).first()
+        except WebApplications.DoesNotExist:
+            return Response({"error":"BUnday Vebsayt mavjud emas!"}, status=status.HTTP_404_NOT_FOUND)
+        
+        if not web.is_verified:
+            return Response({
+                  "message": "Vebsaytingiz hali tekshirilmagan (not verified)!"   
+              }, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        credentials = pika.PlainCredentials(os.getenv("PIKA_USER"), os.getenv("PIKA_PASSWORD"))
+
+        parameters = pika.ConnectionParameters(
+            host='127.0.0.1',
+            port=5672,
+            virtual_host='/',  # Standart vhost nomi aniq shu!
+            credentials=credentials
+        )
 
 
-# logger = logging.getLogger(__name__)
-# @extend_schema(tags=["web/full-scan"])
-# class StartScanView(APIView):
-#     permission_classes = [IsAuthenticated]
-#     serializer_class = StartScanSerializer
-#     def post(self, request, *args, **kwargs):
-#         serializer = self.serializer_class(data=request.data)
+        try:
+            conn = pika.BlockingConnection(parameters=parameters)
+            channel = conn.channel()
 
-#         if not serializer.is_valid():
-#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            queue_name = "fullscan"
+            channel.queue_declare(queue=queue_name, durable=True)
 
-#         slug = serializer.validated_data['slug']
+            # 🔥 1. Faqat shu so'rov uchun vaqtinchalik eksklyuziv navbat ochamiz
+            reply_queue = channel.queue_declare(queue='', exclusive=True)
+            callback_queue = reply_queue.method.queue
 
-#         try:
-#             web = WebApplications.objects.get(user=request.user, slug=slug)
-#         except WebApplications.DoesNotExist:
-#             return Response(
-#                 {"error": "Sizga tegishli bo'lgan bunday vebsayt topilmadi!"}, 
-#                 status=status.HTTP_404_NOT_FOUND
-#             )
+            # Xabarlar aralashib ketmasligi uchun unikal ID (Correlation ID) yaratamiz
+            
+            corr_id = str(uuid.uuid4())
+            response_data = None
 
-#         if not web.is_verified:
-#             return Response({
-#                 "message": "Vebsaytingiz hali tekshirilmagan (not verified)!"   
-#             }, status=status.HTTP_406_NOT_ACCEPTABLE)
+            # 🔥 2. Javob kelganda ishlaydigan ichki funksiya (Callback)
+            def on_response(ch, method, props, body):
+                nonlocal response_data
+                if props.correlation_id == corr_id:
+                    response_data = json.loads(body.decode())
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
 
-#         try:
-#             connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
-#             channel = connection.channel()
+            # Vaqtinchalik navbatni tinglashni boshlaymiz
+            channel.basic_consume(queue=callback_queue, on_message_callback=on_response)
 
-#             queue_name = 'web_scan_tasks'
-#             channel.queue_declare(queue=queue_name, durable=True)
+            payload = {
+                "domain": web.domain,
+                "user_id": web.user.id,
+                "slug": web.slug
+            }
 
-#             payload = {
-#                 "url": web.domain,      
-#                 "user_id": web.user.id,  
-#                 "slug": web.slug
-#             }
+            message_body = json.dumps(payload)
 
-#             message_body = json.dumps(payload)
+            # 🔥 3. Xabarni yuborishda reply_to va correlation_id ni qo'shib yuboramiz
+            channel.basic_publish(
+                exchange='',
+                routing_key=queue_name,
+                body=message_body,
+                properties=pika.BasicProperties( 
+                    delivery_mode=2,
+                    reply_to=callback_queue,       # FastAPI javobni aynan qayerga qaytarishi
+                    correlation_id=corr_id         # So'rov identifikatori
+                )
+            )
 
-#             channel.basic_publish(
-#                 exchange='',
-#                 routing_key=queue_name,
-#                 body=message_body,
-#                 properties=pika.BasicProperties( 
-#                     delivery_mode=2,             
-#                 )
-#             )
+            logger.info(f"⏳ Django '{slug}' uchun FastAPI dan javob kutmoqda...")
 
-#             connection.close() 
+            # 🔥 4. FastAPI dan javob kelguncha o'sha joyda bloklab kutib turamiz
+            while response_data is None:
+                conn.process_data_events(time_limit=1) # Har 1 soniyada navbatni tekshiradi
 
-#             return Response({
-#                 "message": "Skanerlash muvaffaqiyatli navbatga qo'shildi! 🚀",
-#                 "status": "QUEUED"
-#             }, status=status.HTTP_202_ACCEPTED)
+            conn.close() 
 
-#         except Exception as e:
-#             logger.error(f"RabbitMQ-ga ulana olmadi: {e}")
-#             return Response({
-#                 "error": "Tizim xatoligi (RabbitMQ ulanishda xato) 🔌"
-#             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            scan = ScanHistory.objects.filter(webapp=web).first()
+            scan.result_summary = response_data.get("report")
+            scan.save()
+
+            return Response({
+                "message": "Skanerlash va AI tahlili muvaffaqiyatli yakunlandi 🎉",
+                "report": scan.report
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"RabbitMQ ulanishida yoki jarayonda xato: {e}")
+            return Response({
+                "error": "Tizim xatoligi (RabbitMQ yoki hisobot kutishda xato) 🔌"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

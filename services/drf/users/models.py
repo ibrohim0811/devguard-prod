@@ -3,6 +3,7 @@ import slugify
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from rest_framework_simplejwt.tokens import RefreshToken
+from .validations import is_subdomain
 
 
 class Users(AbstractUser):
@@ -35,28 +36,37 @@ class Users(AbstractUser):
 class WebApplications(models.Model):
 
     user = models.ForeignKey(Users, on_delete=models.CASCADE, related_name="webapplication")
-    domain = models.URLField(unique=True)
+    domain = models.URLField(unique=True, blank=True, null=True)
     title = models.CharField(max_length=200)
     is_verified = models.BooleanField(default=False)
+    is_subdomain = models.BooleanField()
     slug = models.SlugField(unique=True)
 
     verification_token = models.CharField(max_length=500, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
-        # Faqat yangi obyekt yaratilayotganda token va slug generatsiya qilamiz
+        if is_subdomain(self.domain):
+            self.is_subdomain = True
+        else:
+            self.is_subdomain = False
+
         if not self.pk:
-            token = f"devshield-verification:{uuid.uuid4().hex[:18]}"
-            self.verification_token = token
+            # --- VERIFICATION TOKEN ---
+            base_token = f"devshield-verification:{uuid.uuid4().hex[:18]}"
+            self.verification_token = base_token
+            
             while WebApplications.objects.filter(verification_token=self.verification_token).exists():
                 addon = uuid.uuid4().hex[:4]
-                self.verification_token = f"{token}-{addon}"
+                self.verification_token = f"{base_token}-{addon}"
                 
-            slug = uuid.uuid4().hex[:8]
-            self.slug = slug
+            # --- SLUG ---
+            base_slug = uuid.uuid4().hex[:8]
+            self.slug = base_slug
+            
             while WebApplications.objects.filter(slug=self.slug).exists():
                 tail = uuid.uuid4().hex[:4]
-                self.slug = f"{slug}-{tail}"
+                self.slug = f"{base_slug}-{tail}"
                 
         return super().save(*args, **kwargs)
 
@@ -97,7 +107,7 @@ class TransactionHistory(models.Model):
 class ScanHistory(models.Model):
     webapp = models.ForeignKey(WebApplications, on_delete=models.CASCADE, related_name="scans")
     scanned_at = models.DateTimeField(auto_now_add=True)
-    result_summary = models.JSONField(default=dict) 
+    result_summary = models.TextField() 
 
     class Meta:
         ordering = ['-scanned_at']
