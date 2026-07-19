@@ -19,7 +19,7 @@ load_dotenv()
 from rest_framework.generics import (
     DestroyAPIView,
     RetrieveAPIView, RetrieveUpdateAPIView,
-    ListCreateAPIView
+    ListCreateAPIView, ListAPIView
 )
 
 from rest_framework.decorators import api_view, permission_classes
@@ -241,7 +241,8 @@ class WebApplicationDeleteBySlugAPIView(DestroyAPIView):
 
 
 @extend_schema(tags=["user/payment"])
-class TransactionListCreateAPIView(ListCreateAPIView):
+class TransactionListCreateAPIView(ListAPIView):
+    queryset = TransactionHistory.objects.all()
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated, ]
 
