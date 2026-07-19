@@ -31,9 +31,7 @@ WebApplicationsSerializer, TransactionSerializer,
 VerifyOTPSerializer, ResendOTPSerializer, CheckPaymentSerializer,
 StartScanSerializer
 )
-from django.core.mail import EmailMultiAlternatives
-from django.template.loader import render_to_string
-from django.utils.html import strip_tags
+
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
 
@@ -344,14 +342,6 @@ class CheckWebappPayment(APIView):
             if last_scan:
                 vaqt_farqi = timezone.now() - last_scan.scanned_at
 
-                if vaqt_farqi < timedelta(days=2):
-                    return Response({
-                        "access": True,
-                        "message": "Oxirgi skandan 2 kun o'tmagan. Skanerlash bepul!"
-                    }, status=status.HTTP_200_OK)
-                
-            if last_scan:
-                vaqt_farqi = timezone.now() - last_scan.scanned_at
                 if vaqt_farqi < timedelta(days=2):
                     return Response({
                         "access": True,
