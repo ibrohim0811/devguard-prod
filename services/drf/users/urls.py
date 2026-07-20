@@ -10,7 +10,7 @@ RegisterCreateAPIView, ProfileRetrieveAPIView,
 TransactionListCreateAPIView, TransactionDetailAPIView,
 checkwebtoken, VerifyOTPAPIView, ResendOTPAPIView,
 WebApplicationDeleteBySlugAPIView, CheckWebappPayment,
-FullScanView
+FullScanView, Scan
 )
 
 
@@ -36,6 +36,7 @@ urlpatterns = [
     path('check-payment/', CheckWebappPayment.as_view(), name="check_payment"),
 
     #scan
-    path('webapp-scan/', FullScanView.as_view(), name="scan")
+    path('webapp-scan/', FullScanView.as_view(), name="scan"),
+    path('webapp-scan/ddos', Scan.as_view(), name="scan-ddos")
 
 ]

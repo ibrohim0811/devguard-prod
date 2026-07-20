@@ -105,9 +105,12 @@ class TransactionHistory(models.Model):
     
 
 class ScanHistory(models.Model):
+    class TypeChoices(models.TextChoices):
+        DDOS = "Ddos attack", "Ddos attack"
+        FULL_SCAN = "Full scan", "full scan"
     webapp = models.ForeignKey(WebApplications, on_delete=models.CASCADE, related_name="scans")
     scanned_at = models.DateTimeField(auto_now_add=True)
     result_summary = models.TextField() 
-
+    scan_type = models.CharField(max_length=200, choices=TypeChoices)
     class Meta:
         ordering = ['-scanned_at']

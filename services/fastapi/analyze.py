@@ -22,10 +22,19 @@ async def analyze_logs_with_groq(scan_output: str) -> str:
 
     system_prompt = (
         "Siz tajribali veb xavfsizligi bo'yicha mutaxassissiz. "
-        "Foydalanuvchi taqdim etgan tizim va tarmoq loglarini tahlil qiling. "
-        "Topilgan ochiq portlar, xizmatlar yoki xavfsizlik kamchiliklarini qisqa, "
-        "tushunarli va professional tavsiyalar bilan o'zbek tilida hisobot shaklida yozib bering. "
-        "Muhim xavflarni va ularni tuzatish bo'yicha eng yaxshi amaliyotlarni (best practices) keltiring."
+        "Foydalanuvchi taqdim etgan Nmap, Nikto yoki SQLMap skanerlash loglarini diqqat bilan tahlil qiling. "
+        "Sizning asosiy vazifangiz — FAQAT loglarda aniq ko'ringan va tasdiqlangan zaifliklarni tahlil qilishdir.\n\n"
+        
+        "⚠️ QAT'IY QOIDALAR:\n"
+        "1. O'zingizdan xavf yoki ochiq port to'qib chiqarmang (Hallucination taqiqlanadi).\n"
+        "2. Agar logda skaner xatolik bergan bo'lsa (masalan: '0 hosts up' yoki 'no usable links found'), "
+        "buni zaiflik deb emas, skanerlash muvaffaqiyatsiz bo'lgani yoki parametrlar yetishmasligi deb hisobotda aniq ko'rsating.\n"
+        "3. Agar tizimda hech qanday xavf topilmagan bo'lsa, buni ochiqchasiga yozing.\n\n"
+        
+        "Hisobot formati (O'zbek tilida, qisqa va professional):\n"
+        "- **Skanerlash Holati**: Skanerlar to'g'ri ishladi-mi yoki xato berdimi?\n"
+        "- **Aniqlangan Haqiqiy Xavflar**: (Faqat logda borlari, bo'lmasa 'Topilmadi' deb yozing)\n"
+        "- **Tavsiyalar va Best Practices**: (Real natijaga mos keladigan amaliy yechimlar)"
     )
 
     payload = {

@@ -5,14 +5,16 @@ import random
 import uuid
 import requests
 import logging
+import time
 from bs4 import BeautifulSoup
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 from django.core.cache import cache
-from datetime import timezone, timedelta
+from django.utils import timezone  
 from dotenv import load_dotenv
+from datetime import timedelta
 
 load_dotenv()
 
@@ -413,6 +415,7 @@ class FullScanView(APIView):
         slug = serializer.validated_data['slug']
         try:
             web = WebApplications.objects.filter(user=request.user, slug=slug).first()
+            transaction = TransactionHistory.objects.filter(webapp=web, user=request.user).order_by("-payment_date").first()
         except WebApplications.DoesNotExist:
             return Response({"error":"BUnday Vebsayt mavjud emas!"}, status=status.HTTP_404_NOT_FOUND)
         
@@ -420,6 +423,20 @@ class FullScanView(APIView):
             return Response({
                   "message": "Vebsaytingiz hali tekshirilmagan (not verified)!"   
               }, status=status.HTTP_406_NOT_ACCEPTABLE)
+        
+        last_scan = ScanHistory.objects.filter(webapp=web).order_by('-scanned_at').first()
+
+        if last_scan and last_scan.scanned_at:
+            vaqt_farqi = timezone.now() - last_scan.scanned_at
+            
+            # Agar oxirgi skandan keyin 2 kun (48 soat) o'tmagan bo'lsa
+            if vaqt_farqi < timedelta(days=2):
+                return Response({
+                    "access": True,
+                    "message": "Oxirgi skandan 2 kun o'tmagan. Skanerlash hozircha bepul!"
+                }, status=status.HTTP_200_OK)
+        
+        
         
         credentials = pika.PlainCredentials(os.getenv("PIKA_USER"), os.getenv("PIKA_PASSWORD"))
 
@@ -438,16 +455,157 @@ class FullScanView(APIView):
             queue_name = "fullscan"
             channel.queue_declare(queue=queue_name, durable=True)
 
-            # 🔥 1. Faqat shu so'rov uchun vaqtinchalik eksklyuziv navbat ochamiz
+            # 1. Vaqtinchalik navbat ochamiz
             reply_queue = channel.queue_declare(queue='', exclusive=True)
             callback_queue = reply_queue.method.queue
 
-            # Xabarlar aralashib ketmasligi uchun unikal ID (Correlation ID) yaratamiz
-            
             corr_id = str(uuid.uuid4())
             response_data = None
 
-            # 🔥 2. Javob kelganda ishlaydigan ichki funksiya (Callback)
+            # 2. Callback funksiya
+            def on_response(ch, method, props, body):
+                nonlocal response_data
+                if props.correlation_id == corr_id:
+                    response_data = json.loads(body.decode())
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
+
+            channel.basic_consume(queue=callback_queue, on_message_callback=on_response)
+
+            payload = {
+                "domain": web.domain,
+                "user_id": web.user.id,
+                "slug": web.slug
+            }
+
+            # 3. Xabarni yuborish
+            channel.basic_publish(
+                exchange='',
+                routing_key=queue_name,
+                body=json.dumps(payload),
+                properties=pika.BasicProperties( 
+                    delivery_mode=2,
+                    reply_to=callback_queue,
+                    correlation_id=corr_id
+                )
+            )
+
+            logger.info(f"⏳ Django '{slug}' uchun FastAPI dan javob kutmoqda...")
+
+            # 🔥 4. CHEKSIZ LOOPdan himoya (Timeout: 60 soniya)
+            start_time = time.time()
+            timeout_limit = 60  # Maksimal kutish vaqti soniyalarda
+
+            while response_data is None:
+                conn.process_data_events(time_limit=1)
+                
+                # Agar kutish vaqti 60 soniyadan oshib ketgan bo'lsa, sikldan chiqib ketamiz
+                if time.time() - start_time > timeout_limit:
+                    logger.warning(f"⏰ FastAPI dan javob kutish vaqti tugadi (Timeout): {slug}")
+                    break
+
+            conn.close() 
+
+            # 🔥 5. Agar timeout bo'lgan bo'lsa, foydalanuvchiga xato qaytaramiz
+            if response_data is None:
+                return Response({
+                    "error": "Skanerlash jarayoni juda uzoq davom etdi yoki server javob bermadi. Keyinroq qayta urinib ko'ring."
+                }, status=status.HTTP_504_GATEWAY_TIMEOUT)
+
+            # 🔥 6. Bazaga xavfsiz saqlash (Agar scan topilmasa, yangi ochadi yoki yangilaydi)
+            scan, created = ScanHistory.objects.get_or_create(
+                webapp=web,
+                defaults={
+                    "result_summary": response_data.get("report"),
+                }
+            )
+            
+            # Agar obyekt allaqachon bor bo'lsa, shunchaki yangilaymiz
+            if not created:
+                scan.result_summary = response_data.get("report")
+                scan.save()
+
+            return Response({
+                "message": "Skanerlash va AI tahlili muvaffaqiyatli yakunlandi 🎉",
+                "report": scan.result_summary  # Maydon nomini to'g'riladik
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"RabbitMQ ulanishida yoki jarayonda xato: {e}")
+            return Response({
+                "error": "Tizim xatoligi (RabbitMQ yoki hisobot kutishda xato) 🔌"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+
+@extend_schema(tags=["web/scan"], request=StartScanSerializer)
+class Scan(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        serializer = StartScanSerializer(data=self.request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        slug = serializer.validated_data['slug']
+        
+        # 1. Obyektlarni xavfsiz tekshirish
+        web = WebApplications.objects.filter(user=request.user, slug=slug).first()
+        if not web:
+            return Response({"error": "Bunday Vebsayt mavjud emas!"}, status=status.HTTP_404_NOT_FOUND)
+            
+        transaction = TransactionHistory.objects.filter(webapp=web, user=request.user).order_by("-payment_date").first()
+        if not transaction or transaction.status != TransactionHistory.StatusChoices.SUCCESS:
+            return Response({"error": "To'lov tasdiqlanmagan!"}, status=status.HTTP_402_PAYMENT_REQUIRED)
+
+        if not web.is_verified:
+            return Response({"message": "Vebsaytingiz hali tekshirilmagan!"}, status=status.HTTP_466_NOT_ACCEPTABLE)
+
+        # 2. Vaqt cheklovini to'g'ri tekshirish (Bug hal qilindi)
+        last_scan = ScanHistory.objects.filter(webapp=web).order_by('-scanned_at').first()
+
+        if last_scan and last_scan.scanned_at:
+            vaqt_farqi = timezone.now() - last_scan.scanned_at
+            
+            # Agar oxirgi skandan keyin 2 kun (48 soat) o'tmagan bo'lsa
+            if not vaqt_farqi < timedelta(days=2):
+                return Response({
+                    "access": True,
+                    "message": "Oxirgi skandan 2 kun o'tgan"
+                }, status=status.HTTP_402_PAYMENT_REQUIRED)
+
+        # 3. Skanerlash tarixida yangi yozuv ochish yoki yangilash
+        scan_record, created = ScanHistory.objects.get_or_create(
+            webapp=web,
+            defaults={"result_summary": "Skanerlash navbatda..."}
+        )
+        if not created:
+            scan_record.result_summary = "Skanerlash navbatda..."
+            scan_record.save()
+
+        # 4. RabbitMQ aloqasi
+        credentials = pika.PlainCredentials(os.getenv("PIKA_USER"), os.getenv("PIKA_PASSWORD"))
+        parameters = pika.ConnectionParameters(
+            host=os.getenv("RABBITMQ_HOST", "127.0.0.1"),
+            port=5672,
+            virtual_host='/', 
+            credentials=credentials
+        )
+
+        try:
+            conn = pika.BlockingConnection(parameters=parameters)
+            channel = conn.channel()
+            
+            # Asosiy topshiriq navbati
+            queue_name = "scan" 
+            channel.queue_declare(queue=queue_name, durable=True)
+
+            # 🔥 RPC uchun vaqtinchalik eksklyuziv javob navbatini ochamiz
+            result = channel.queue_declare(queue='', exclusive=True)
+            callback_queue = result.method.queue
+
+            corr_id = str(uuid.uuid4())
+            response_data = None
+
+            # Callback funksiyasi: FastAPI dan aynan shu corr_id bilan kelgan javobni ushlaydi
             def on_response(ch, method, props, body):
                 nonlocal response_data
                 if props.correlation_id == corr_id:
@@ -458,44 +616,43 @@ class FullScanView(APIView):
             channel.basic_consume(queue=callback_queue, on_message_callback=on_response)
 
             payload = {
+                "task_id": corr_id,
                 "domain": web.domain,
                 "user_id": web.user.id,
-                "slug": web.slug
+                "slug": web.slug,
+                "scan_record_id": scan_record.id
             }
 
-            message_body = json.dumps(payload)
-
-            # 🔥 3. Xabarni yuborishda reply_to va correlation_id ni qo'shib yuboramiz
+            # Xabarni yuboramiz. reply_to qismiga vaqtinchalik callback_queue ni beramiz
             channel.basic_publish(
                 exchange='',
                 routing_key=queue_name,
-                body=message_body,
-                properties=pika.BasicProperties( 
+                body=json.dumps(payload),
+                properties=pika.BasicProperties(
                     delivery_mode=2,
-                    reply_to=callback_queue,       # FastAPI javobni aynan qayerga qaytarishi
-                    correlation_id=corr_id         # So'rov identifikatori
+                    reply_to=callback_queue,  # 🔥 FastAPI javobni mana shu vaqtinchalik navbatga qaytaradi
+                    correlation_id=corr_id
                 )
             )
 
-            logger.info(f"⏳ Django '{slug}' uchun FastAPI dan javob kutmoqda...")
-
-            # 🔥 4. FastAPI dan javob kelguncha o'sha joyda bloklab kutib turamiz
+            # 🔥 FastAPI dan javob kelguncha HTTP so'rovni ushlab, kutib turamiz
+            # (Skanerlash va AI tugaguncha thread shu yerda bloklanadi)
             while response_data is None:
-                conn.process_data_events(time_limit=1) # Har 1 soniyada navbatni tekshiradi
+                conn.process_data_events(time_limit=1)
 
-            conn.close() 
+            conn.close()
 
-            scan = ScanHistory.objects.filter(webapp=web).first()
-            scan.result_summary = response_data.get("report")
-            scan.save()
+            # 5. Kelgan natijani bazaga saqlaymiz
+            scan_record.result_summary = response_data.get("report", "Tahlil natijasi bo'sh.")
+            scan_record.save()
 
+            # Darhol yakuniy natijani foydalanuvchiga qaytaramiz!
             return Response({
                 "message": "Skanerlash va AI tahlili muvaffaqiyatli yakunlandi 🎉",
-                "report": scan.report
+                "report": scan_record.result_summary
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            logger.error(f"RabbitMQ ulanishida yoki jarayonda xato: {e}")
             return Response({
-                "error": "Tizim xatoligi (RabbitMQ yoki hisobot kutishda xato) 🔌"
+                "error": f"Skanerlash jarayonida xato yuz berdi: {str(e)}"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
