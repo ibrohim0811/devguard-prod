@@ -2,10 +2,10 @@ import asyncio
 import aio_pika
 import json
 import os
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from typing import Dict
-
+from fastapi import FastAPI
+from redis.asyncio import Redis
 from dotenv import load_dotenv
+
 from analyze import analyze_logs_with_groq
 
 load_dotenv()
@@ -14,41 +14,38 @@ RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 
 app = FastAPI()
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
+# ------------------------------------
+#   Redis Client & Django Signal
+# ------------------------------------
+# Docker da REDIS_HOST=redis, local da 127.0.0.1
+_redis_host = os.getenv("REDIS_HOST", "127.0.0.1")
+_redis_port = int(os.getenv("REDIS_PORT", 6379))
+redis_client = Redis(host=_redis_host, port=_redis_port, db=0)
 
-    async def connect(self, task_id: str, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections[task_id] = websocket
-
-    def disconnect(self, task_id: str):
-        if task_id in self.active_connections:
-            del self.active_connections[task_id]
-
-    async def send_status(self, task_id: str, message: dict):
-        if task_id in self.active_connections:
-            await self.active_connections[task_id].send_json(message)
-
-manager = ConnectionManager()
-
-@app.websocket("/ws/scan/{task_id}")
-async def websocket_endpoint(websocket: WebSocket, task_id: str):
-    await manager.connect(task_id, websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(task_id)
+async def send_status_to_django(task_id: str, payload: dict):
+    """Django Channels'ning Redis guruhiga real-time status yuborish"""
+    if not task_id:
+        return
+    
+    channel_layer_name = f'scan_{task_id}'
+    
+    event = {
+        "type": "scan_status_update",  # Django Consumer'dagi funksiya nomi
+        "message": payload
+    }
+    
+    # Django channels_redis xabarlarni 'asgi:group:<group_name>' kalitida kutadi
+    await redis_client.publish(
+        f"asgi:group:{channel_layer_name}",
+        json.dumps(event)
+    )
 
 
 def clean_and_truncate_log(log_text: str, max_chars: int = 5000) -> str:
     """Log faylini Groq limiti uchun qisqartiradi, faqat topilgan natijalarni saqlaydi"""
     lines = log_text.split("\n")
-    # Faqat topilgan (FOUND yoki +) qatorlarni ajratib olamiz (dirb natijalari uchun)
     important_lines = [line for line in lines if "+" in line or "FOUND" in line or "DIRECTORY" in line]
     
-    # Agar muhim qatorlar bo'lsa ularni, bo'lmasa oxirgi qismini olamiz
     cleaned_text = "\n".join(important_lines) if important_lines else log_text
     
     if len(cleaned_text) > max_chars:
@@ -56,9 +53,9 @@ def clean_and_truncate_log(log_text: str, max_chars: int = 5000) -> str:
     return cleaned_text
 
 
-#------------------------------------
+# ------------------------------------
 #   1 - CHANNEL: Full Audit Task    
-#------------------------------------
+# ------------------------------------
 async def process_scan_task(message: aio_pika.IncomingMessage):
     print("🚨 [Fullscan] XABAR KELDI! Qayta ishlash boshlandi...")
     async with message.process():
@@ -73,8 +70,11 @@ async def process_scan_task(message: aio_pika.IncomingMessage):
             task_id = data.get("task_id")
             
             print(f"📥 Yangi vazifa (Fullscan): Domain={domain}, Slug={slug}")
-            await manager.send_status(task_id, {
+            
+            # 📢 Django WebSocket orqali front-endga status yuboramiz
+            await send_status_to_django(task_id, {
                 "status": "processing", 
+                "progress": 20,
                 "message": "Chuqur audit skanerlash boshlandi..."
             })
             
@@ -88,22 +88,18 @@ async def process_scan_task(message: aio_pika.IncomingMessage):
             
             if process.returncode == 0:
                 scan_result = stdout.decode().strip()
-                await manager.send_status(task_id, {
-                    "status": "done", 
-                    "message": "Audit skanerlash muvaffaqiyatli tugadi ✅"
+                
+                await send_status_to_django(task_id, {
+                    "status": "analyzing", 
+                    "progress": 70,
+                    "message": "Audit tugadi, Groq AI tahlil qilmoqda... 🧠"
                 })
                 
                 r = await analyze_logs_with_groq(clean_and_truncate_log(scan_result))
                 
-                # OPTIMALLASHTIRILGAN: Mavjud kanaldan qayta foydalanamiz
+                # Natijani Django kutayotgan navbatga yuboramiz
                 routing_key = reply_to_queue if reply_to_queue else "fullscan_results"
-                connection = await aio_pika.connect_robust(RABBITMQ_URL)
-                result_queue_name = "scan_results"
-
-                result_channel = await connection.channel()
-
-                # 1. Navbatni to'g'ri e'lon qilamiz (Bu sening kodingda to'g'ri yozilgan)
-                queue = await result_channel.declare_queue(result_queue_name, durable=True)
+                
                 response_payload = {
                     "slug": slug,
                     "user_id": user_id,
@@ -111,27 +107,40 @@ async def process_scan_task(message: aio_pika.IncomingMessage):
                     "status": "completed"
                 }
                 
-                await result_channel.default_exchange.publish(
-                    aio_pika.Message(
-                        body=json.dumps(response_payload).encode(),
-                        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-                        correlation_id=corr_id # Django bilan RPC uzilib qolmasligi uchun buni ham qo'shib ket!
-                    ),
-                    routing_key=result_queue_name
+                # Tayyor kanaldan foydalanamiz (Qayta connect qilmaymiz)
+                msg = aio_pika.Message(
+                    body=json.dumps(response_payload).encode(),
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                    correlation_id=corr_id
                 )
-                
+                await message.channel.basic_publish(
+                    body=msg.body,
+                    routing_key=routing_key,
+                    properties=msg.properties
+                )
+                # 📢 Front-endga tugagani haqida xabar beryapmiz
+                await send_status_to_django(task_id, {
+                    "status": "completed", 
+                    "progress": 100,
+                    "message": "Audit skanerlash muvaffaqiyatli yakunlandi! 🎉",
+                    "report": r
+                })
                 
                 print(f"🚀 AI hisoboti '{routing_key}' navbatiga yuborildi!")
             else:
                 error_log = stderr.decode().strip()
                 print(f"❌ Skanerlashda xatolik yuz berdi ({slug}): {error_log}")
+                await send_status_to_django(task_id, {
+                    "status": "failed", 
+                    "message": f"Skanerlashda xatolik: {error_log}"
+                })
         except Exception as e:
             print(f"⚠️ Xabarni qayta ishlashda kutilmagan xato: {e}")
 
 
-#------------------------------------
+# ------------------------------------
 #   2 - CHANNEL: Regular Scan Task   
-#------------------------------------
+# ------------------------------------
 async def scan(message: aio_pika.IncomingMessage):
     print("🚨 [Scan] XABAR KELDI! Qayta ishlash boshlandi...")
     async with message.process():
@@ -146,8 +155,11 @@ async def scan(message: aio_pika.IncomingMessage):
             task_id = data.get("task_id")
             
             print(f"📥 Yangi vazifa (Scan): Domain={domain}, Slug={slug}")
-            await manager.send_status(task_id, {
+            
+            # 📢 Django WebSocket status
+            await send_status_to_django(task_id, {
                 "status": "processing", 
+                "progress": 20,
                 "message": "Standart skanerlash boshlandi..."
             })
             
@@ -161,22 +173,17 @@ async def scan(message: aio_pika.IncomingMessage):
             
             if process.returncode == 0:
                 scan_result = stdout.decode().strip()
-                await manager.send_status(task_id, {
-                    "status": "done", 
-                    "message": "Audit skanerlash muvaffaqiyatli tugadi ✅"
+                print(f"SCAN:{scan_result}")
+                await send_status_to_django(task_id, {
+                    "status": "analyzing", 
+                    "progress": 70,
+                    "message": "Skanerlash tugadi, Groq AI tahlil qilmoqda... 🧠"
                 })
                 
                 r = await analyze_logs_with_groq(clean_and_truncate_log(scan_result))
                 
-                # OPTIMALLASHTIRILGAN: Mavjud kanaldan qayta foydalanamiz
-                routing_key = reply_to_queue if reply_to_queue else "fullscan_results"
-                connection = await aio_pika.connect_robust(RABBITMQ_URL)
-                result_queue_name = "scan_results"
-
-                result_channel = await connection.channel()
-
-                # 1. Navbatni to'g'ri e'lon qilamiz (Bu sening kodingda to'g'ri yozilgan)
-                queue = await result_channel.declare_queue(result_queue_name, durable=True)
+                routing_key = reply_to_queue if reply_to_queue else "scan_results"
+                
                 response_payload = {
                     "slug": slug,
                     "user_id": user_id,
@@ -184,29 +191,48 @@ async def scan(message: aio_pika.IncomingMessage):
                     "status": "completed"
                 }
                 
-                await result_channel.default_exchange.publish(
-                    aio_pika.Message(
-                        body=json.dumps(response_payload).encode(),
-                        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-                        correlation_id=corr_id # Django bilan RPC uzilib qolmasligi uchun buni ham qo'shib ket!
-                    ),
-                    routing_key=result_queue_name
+                
+
+                # 2. Xabarni yuboramiz
+                msg = aio_pika.Message(
+                    body=json.dumps(response_payload).encode(),
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                    correlation_id=corr_id
+                )
+                await message.channel.basic_publish(
+                    body=msg.body,
+                    routing_key=routing_key,
+                    properties=msg.properties
                 )
                 
+                # 📢 Front-endga tugagani haqida xabar
+                await send_status_to_django(task_id, {
+                    "status": "completed", 
+                    "progress": 100,
+                    "message": "Standart skanerlash muvaffaqiyatli yakunlandi! 🎉",
+                    "report": r
+                })
                 
                 print(f"🚀 AI hisoboti '{routing_key}' navbatiga yuborildi!")
             else:
                 error_log = stderr.decode().strip()
                 print(f"❌ Skanerlashda xatolik yuz berdi ({slug}): {error_log}")
+                await send_status_to_django(task_id, {
+                    "status": "failed", 
+                    "message": f"Skanerlashda xatolik: {error_log}"
+                })
         except Exception as e:
             print(f"⚠️ Xabarni qayta ishlashda kutilmagan xato: {e}")
 
 
+# ------------------------------------
+#   Main Runner
+# ------------------------------------
 async def main():
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
     
-    # Prefetch count worker resursini to'g'ri taqsimlaydi
+    # Prefetch count: Har bir worker birdaniga 2 tadan ko'p vazifa olmasligi uchun
     await channel.set_qos(prefetch_count=2)
     
     queue1 = await channel.declare_queue("scan", durable=True)

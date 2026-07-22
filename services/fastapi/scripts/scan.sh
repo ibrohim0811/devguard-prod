@@ -5,11 +5,15 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-RAW_TARGET=$1
+TARGET="$1"
+WORDLIST="./scripts/common.txt"
 
-# Domenni tozalash (http/https va sleshlarni olib tashlash)
-TARGET=$(echo "$RAW_TARGET" | sed -e 's/^https:\/\///' -e 's/^http:\/\///' -e 's/\/.*$//')
+if [ ! -f "$WORDLIST" ]; then
+    echo "FATAL: Wordlist fayli topilmadi: $WORDLIST" >&2
+    exit 1
+fi
 
-# 🔥 DIRB ga wordlist manzilini aniq ko'rsatamiz va URL formatida yuboramiz
-# (dirb ishlashi uchun target boshida http:// bo'lishi shart, shuning uchun qayta qo'shamiz)
-dirb "http://$TARGET" /usr/share/dirb/wordlists/common.txt
+# 🔥 Localhost va Portlar bilan muammosiz ishlashi uchun:
+# -S: Jimroq rejim (keraksiz ma'lumotlarni chiqarib tashlaydi)
+# -r: Sub-papkalar ichiga chuqur kirmaslik (skan jarayonini tezlashtiradi)
+dirb "$TARGET" "$WORDLIST" -S -r

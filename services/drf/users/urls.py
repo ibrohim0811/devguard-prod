@@ -4,6 +4,8 @@ from rest_framework_simplejwt.views import (
 TokenObtainPairView, TokenRefreshView, TokenBlacklistView
 )
 
+
+
 from .views import ( 
 WebApplicationsListCreateView, WebApplicationsDetailView, 
 RegisterCreateAPIView, ProfileRetrieveAPIView,
@@ -12,6 +14,8 @@ checkwebtoken, VerifyOTPAPIView, ResendOTPAPIView,
 WebApplicationDeleteBySlugAPIView, CheckWebappPayment,
 FullScanView, Scan
 )
+
+
 
 
 urlpatterns = [
@@ -40,3 +44,6 @@ urlpatterns = [
     path('webapp-scan/ddos', Scan.as_view(), name="scan-ddos")
 
 ]
+
+
+

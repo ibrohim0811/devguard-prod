@@ -18,6 +18,7 @@ ALLOWED_HOSTS = ['*']
 
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -27,6 +28,7 @@ INSTALLED_APPS = [
 
     'core',
     'users',
+    'channels',
 
     'rest_framework',
     'corsheaders',
@@ -34,6 +36,8 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'django_celery_results',
 ]
+
+ASGI_APPLICATION = 'devshield.asgi.application'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -173,13 +177,23 @@ SPECTACULAR_SETTINGS = {
     # OTHER SETTINGS
 }
 
-EMAIL_BACKEND=os.getenv("EMAIL_BACKEND")
-EMAIL_HOST=os.getenv("EMAIL_HOST")
-EMAIL_PORT=os.getenv("EMAIL_PORT")
-EMAIL_USE_TLS=os.getenv("EMAIL_USE_TLS")
-EMAIL_HOST_USER=os.getenv("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD=os.getenv("EMAIL_HOST_PASSWORD")
-       
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            # Docker da REDIS_HOST=redis, local da 127.0.0.1
+            "hosts": [(os.getenv('REDIS_HOST', '127.0.0.1'), int(os.getenv('REDIS_PORT', 6379)))],
+        },
+    },
+}
 
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND")
+EMAIL_HOST = os.getenv("EMAIL_HOST")
+EMAIL_PORT = os.getenv("EMAIL_PORT")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS")
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL = os.getenv("EMAIL_HOST_USER", "noreply@devshield.uz")
 
 STATIC_URL = 'static/'
+

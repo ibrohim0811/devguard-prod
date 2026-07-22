@@ -1,0 +1,14 @@
+# RabbitMQ async client
+aio-pika==9.4.3
+
+# Redis async client
+redis==8.0.1
+
+# HTTP client (Groq API uchun)
+httpx==0.28.1
+
+# Environment
+python-dotenv==1.2.2
+
+# Async
+anyio==4.14.1

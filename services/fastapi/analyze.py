@@ -34,7 +34,7 @@ async def analyze_logs_with_groq(scan_output: str) -> str:
         "Hisobot formati (O'zbek tilida, qisqa va professional):\n"
         "- **Skanerlash Holati**: Skanerlar to'g'ri ishladi-mi yoki xato berdimi?\n"
         "- **Aniqlangan Haqiqiy Xavflar**: (Faqat logda borlari, bo'lmasa 'Topilmadi' deb yozing)\n"
-        "- **Tavsiyalar va Best Practices**: (Real natijaga mos keladigan amaliy yechimlar)"
+        "- **Tavsiyalar va Best Practices**: (Agar haqiqiy xavflar aniqlangan bo'lsa Real natijaga mos keladigan amaliy yechimlar bering bo'lmasa web sayt xavfsiz yoki shunga oxshash javob qaytaring)"
     )
 
     payload = {

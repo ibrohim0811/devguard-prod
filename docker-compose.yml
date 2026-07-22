@@ -1,0 +1,171 @@
+services:
+
+  # ─────────────────────────────────────────
+  #   Infrastructure Services
+  # ─────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: devshield_postgres
+    env_file: .env
+    environment:
+      POSTGRES_DB: ${NAME}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - devshield_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: devshield_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - devshield_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: devshield_rabbitmq
+    env_file: .env
+    environment:
+      RABBITMQ_DEFAULT_USER: ${PIKA_USER}
+      RABBITMQ_DEFAULT_PASS: ${PIKA_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "15672:15672"   # Management UI
+    networks:
+      - devshield_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ─────────────────────────────────────────
+  #   Application Services
+  # ─────────────────────────────────────────
+  django:
+    build:
+      context: ./services/drf
+      dockerfile: Dockerfile
+    container_name: devshield_django
+    env_file: .env
+    volumes:
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - devshield_network
+    restart: unless-stopped
+
+  celery:
+    build:
+      context: ./services/drf
+      dockerfile: Dockerfile
+    container_name: devshield_celery
+    command: celery -A devshield worker --loglevel=info --concurrency=2
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - devshield_network
+    restart: unless-stopped
+
+  fastapi_worker:
+    build:
+      context: ./services/fastapi
+      dockerfile: Dockerfile
+    container_name: devshield_fastapi_worker
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - devshield_network
+    restart: unless-stopped
+
+  bot:
+    build:
+      context: ./services/bot
+      dockerfile: Dockerfile
+    container_name: devshield_bot
+    env_file: .env
+    depends_on:
+      - django
+    networks:
+      - devshield_network
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  #   Nginx Reverse Proxy
+  # ─────────────────────────────────────────
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: devshield_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - static_files:/app/staticfiles:ro
+      - media_files:/app/media:ro
+    depends_on:
+      - django
+    networks:
+      - devshield_network
+    restart: unless-stopped
+
+
+# ─────────────────────────────────────────
+#   Named Volumes
+# ─────────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  static_files:
+    driver: local
+  media_files:
+    driver: local
+
+
+# ─────────────────────────────────────────
+#   Networks
+# ─────────────────────────────────────────
+networks:
+  devshield_network:
+    driver: bridge
