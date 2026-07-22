@@ -7,17 +7,17 @@ from django.conf.urls.static import static
 from devshield import settings
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path('devguard/managements/owner/', admin.site.urls),
 
     path('api/v1/product/', include('core.urls')),
     path('api/v1/user/', include('users.urls')),
 
     
 
-    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('spectacular/api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # Optional UI:
-    path('', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
-    path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+    path('spectacular/api/schame/swagger', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('spectacular/api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
 
 

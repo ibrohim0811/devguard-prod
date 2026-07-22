@@ -13,7 +13,22 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG')
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = [
+    'ibrohim.api.devguard.uz',
+    'localhost',
+    '127.0.0.1',
+]
+
+# Nginx reverse proxy orqasida ishlayotgani uchun
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+
+# CSRF uchun ishonchli manbalar
+CSRF_TRUSTED_ORIGINS = [
+    'https://ibrohim.api.devguard.uz',
+    'http://ibrohim.api.devguard.uz',
+]
 
 
 

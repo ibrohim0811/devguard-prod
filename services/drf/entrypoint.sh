@@ -1,20 +1,11 @@
-#!/bin/bash
-# services/drf/entrypoint.sh
-set -e
+#!/bin/sh
 
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  DevShield — Django ASGI Startup"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-echo "🔄 [1/3] Ma'lumotlar bazasi migratsiyalari..."
+# Migratsiya va static fayllar
 python manage.py migrate --noinput
+python manage.py collectstatic --noinput
 
-echo "📁 [2/3] Static fayllarni yig'ish..."
-python manage.py collectstatic --noinput --clear
+# ❌ ESKI (Gunicorn - Faqat HTTP):
+# exec gunicorn devshield.wsgi:application --bind 0.0.0.0:8000
 
-echo "🚀 [3/3] Daphne ASGI serverni ishga tushirish..."
-exec daphne \
-  -b 0.0.0.0 \
-  -p 8000 \
-  --access-log - \
-  devshield.asgi:application
+# ✅ YANGI (Daphne - HTTP + WebSocket):
+exec daphne -b 0.0.0.0 -p 8000 devshield.asgi:application

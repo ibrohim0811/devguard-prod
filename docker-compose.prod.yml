@@ -1,3 +1,8 @@
+# ═══════════════════════════════════════════════════════════════
+#   DevShield — Production Docker Compose
+#   GHCR dan imagelarni pull qiladi (serverda build qilmaydi)
+# ═══════════════════════════════════════════════════════════════
+
 services:
 
   # ─────────────────────────────────────────
@@ -26,7 +31,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: devshield_redis
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     networks:
@@ -47,8 +52,8 @@ services:
       RABBITMQ_DEFAULT_PASS: ${PIKA_PASSWORD}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
-    ports:
-      - "15672:15672"   # Management UI
+    # Production da management UI ni tashqariga ochmang!
+    # Faqat internal network orqali kirish mumkin
     networks:
       - devshield_network
     restart: unless-stopped
@@ -60,12 +65,10 @@ services:
       start_period: 20s
 
   # ─────────────────────────────────────────
-  #   Application Services
+  #   Application Services (GHCR imagelardan)
   # ─────────────────────────────────────────
   django:
-    build:
-      context: ./services/drf
-      dockerfile: Dockerfile
+    image: ghcr.io/ibrohim0811/devshield-django:latest
     container_name: devshield_django
     env_file: .env
     volumes:
@@ -81,11 +84,13 @@ services:
     networks:
       - devshield_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   celery:
-    build:
-      context: ./services/drf
-      dockerfile: Dockerfile
+    image: ghcr.io/ibrohim0811/devshield-django:latest
     container_name: devshield_celery
     command: celery -A devshield worker --loglevel=info --concurrency=2
     env_file: .env
@@ -101,11 +106,13 @@ services:
     networks:
       - devshield_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   fastapi_worker:
-    build:
-      context: ./services/fastapi
-      dockerfile: Dockerfile
+    image: ghcr.io/ibrohim0811/devshield-fastapi-worker:latest
     container_name: devshield_fastapi_worker
     env_file: .env
     depends_on:
@@ -116,11 +123,13 @@ services:
     networks:
       - devshield_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   bot:
-    build:
-      context: ./services/bot
-      dockerfile: Dockerfile
+    image: ghcr.io/ibrohim0811/devshield-bot:latest
     container_name: devshield_bot
     env_file: .env
     depends_on:
@@ -129,17 +138,20 @@ services:
     networks:
       - devshield_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ─────────────────────────────────────────
   #   Nginx Reverse Proxy
   # ─────────────────────────────────────────
   nginx:
-    build:
-      context: ./nginx
-      dockerfile: Dockerfile
+    image: ghcr.io/ibrohim0811/devshield-nginx:latest
     container_name: devshield_nginx
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - static_files:/app/staticfiles:ro
       - media_files:/app/media:ro
