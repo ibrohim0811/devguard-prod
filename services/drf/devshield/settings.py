@@ -128,10 +128,8 @@ USE_TZ = True
 
 AUTH_USER_MODEL = 'users.Users'
 
+STATIC_ROOT = Path(__file__).resolve().parent.parent / 'staticfiles'
 STATIC_URL = '/static/'
-# STATICFILES_DIRS = [BASE_DIR / 'static']
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -209,6 +207,4 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS")
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = os.getenv("EMAIL_HOST_USER", "noreply@devshield.uz")
-
-STATIC_URL = 'static/'
 
