@@ -131,6 +131,9 @@ services:
   bot:
     image: ghcr.io/ibrohim0811/devshield-bot:latest
     container_name: devshield_bot
+    environment:
+      - DJANGO_SETTINGS_MODULE=devshield.settings
+      - PYTHONPATH=/app
     env_file: .env
     depends_on:
       django:
