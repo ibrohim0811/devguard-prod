@@ -11,11 +11,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
 SECRET_KEY = os.getenv('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG')
+DEBUG = os.getenv('DEBUG', False)
 
 ALLOWED_HOSTS = [
     'api.devguard.uz',
-    'ibrohim.api.devguard.uz',
     'localhost',
     '127.0.0.1',
 ]
@@ -29,8 +28,7 @@ USE_X_FORWARDED_PORT = True
 CSRF_TRUSTED_ORIGINS = [
     'https://api.devguard.uz',
     'http://api.devguard.uz',
-    'https://ibrohim.api.devguard.uz',
-    'http://ibrohim.api.devguard.uz',
+    
 ]
 
 
