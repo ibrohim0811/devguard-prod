@@ -14,10 +14,12 @@ urlpatterns = [
 
     
 
-    path('spectacular/api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    # Optional UI:
-    path('spectacular/api/schame/swagger', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
-    path('spectacular/api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+    path('spectacular/api/schema/', SpectacularAPIView.as_view(), name='schema-spectacular'),
+    path('spectacular/api/schema/swagger', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui-spectacular'),
+    path('spectacular/api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc-spectacular'),
 ]
 
 

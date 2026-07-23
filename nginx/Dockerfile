@@ -10,4 +10,4 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Static va media papkalari (volume mount uchun)
 RUN mkdir -p /app/staticfiles /app/media
 
-EXPOSE 80
+EXPOSE 80 443

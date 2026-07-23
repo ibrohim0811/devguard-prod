@@ -14,6 +14,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 DEBUG = os.getenv('DEBUG')
 
 ALLOWED_HOSTS = [
+    'api.devguard.uz',
     'ibrohim.api.devguard.uz',
     'localhost',
     '127.0.0.1',
@@ -26,6 +27,8 @@ USE_X_FORWARDED_PORT = True
 
 # CSRF uchun ishonchli manbalar
 CSRF_TRUSTED_ORIGINS = [
+    'https://api.devguard.uz',
+    'http://api.devguard.uz',
     'https://ibrohim.api.devguard.uz',
     'http://ibrohim.api.devguard.uz',
 ]
