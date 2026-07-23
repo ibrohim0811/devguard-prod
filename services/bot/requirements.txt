@@ -9,3 +9,4 @@ python-dotenv==1.2.2
 
 # HTTP requests (agar kerak bo'lsa)
 requests==2.32.3
+Django==5.2.16
