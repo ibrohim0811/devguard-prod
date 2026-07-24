@@ -17,6 +17,7 @@ ALLOWED_HOSTS = [
     'api.devguard.uz',
     'localhost',
     '127.0.0.1',
+    '84.235.169.116',
 ]
 
 # Nginx reverse proxy orqasida ishlayotgani uchun
