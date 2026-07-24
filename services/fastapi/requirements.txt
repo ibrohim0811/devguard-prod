@@ -1,3 +1,7 @@
+# FastAPI framework
+fastapi>=0.115.0
+uvicorn>=0.34.0
+
 # RabbitMQ async client
 aio-pika==9.4.3
 

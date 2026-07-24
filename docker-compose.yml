@@ -64,8 +64,8 @@ services:
   # ─────────────────────────────────────────
   django:
     build:
-      context: ./services/drf
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/drf/Dockerfile
     container_name: devshield_django
     env_file: .env
     volumes:
@@ -84,8 +84,8 @@ services:
 
   celery:
     build:
-      context: ./services/drf
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/drf/Dockerfile
     container_name: devshield_celery
     command: celery -A devshield worker --loglevel=info --concurrency=2
     env_file: .env
@@ -104,8 +104,8 @@ services:
 
   fastapi_worker:
     build:
-      context: ./services/fastapi
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/fastapi/Dockerfile
     container_name: devshield_fastapi_worker
     env_file: .env
     depends_on:
@@ -119,8 +119,8 @@ services:
 
   bot:
     build:
-      context: ./services/bot
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/bot/Dockerfile
     container_name: devshield_bot
     env_file: .env
     depends_on:
