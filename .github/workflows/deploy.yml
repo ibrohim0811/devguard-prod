@@ -135,10 +135,10 @@ jobs:
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
             echo "🗄️ Migratsiyalar..."
-            docker compose -f docker-compose.prod.yml exec -T django python manage.py migrate --noinput
+            docker compose -f docker-compose.prod.yml exec -T django python services/drf/manage.py migrate --noinput
 
             echo "📦 Static fayllarni yig'ish..."
-            docker compose -f docker-compose.prod.yml exec -T django python manage.py collectstatic --noinput
+            docker compose -f docker-compose.prod.yml exec -T django python services/drf/manage.py collectstatic --noinput
 
             echo "🧹 Eski imagelarni tozalash..."
             docker image prune -f
