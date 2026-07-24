@@ -53,7 +53,7 @@ class WebApplications(models.Model):
 
         if not self.pk:
             # --- VERIFICATION TOKEN ---
-            base_token = f"devshield-verification:{uuid.uuid4().hex[:18]}"
+            base_token = f"devguard-verification:{uuid.uuid4().hex[:18]}"
             self.verification_token = base_token
             
             while WebApplications.objects.filter(verification_token=self.verification_token).exists():
@@ -97,7 +97,7 @@ class TransactionHistory(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.payment_id:
-            self.payment_id = f"devshield_payment_{uuid.uuid4().hex}"
+            self.payment_id = f"devguard_payment_{uuid.uuid4().hex}"
         return super().save(*args, **kwargs)
 
     def __str__(self):

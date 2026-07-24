@@ -285,7 +285,7 @@ def checkwebtoken(request, slug):
                         response = requests.get(web_link, timeout=10)
                         soup = BeautifulSoup(response.text, 'html.parser')
 
-                        meta_tag = soup.find('meta', attrs={'name': 'devshield'})
+                        meta_tag = soup.find('meta', attrs={'name': 'devguard'})
                         if meta_tag:
                             
                             web_token = meta_tag.get('content')
@@ -306,7 +306,7 @@ def checkwebtoken(request, slug):
                         else:
                             return Response({
                                 "success":True,
-                                "message":"❌ Sahifada 'devshield' nomli meta teg topilmadi."
+                                "message":"❌ Sahifada 'devguard' nomli meta teg topilmadi."
                             }, status=status.HTTP_400_BAD_REQUEST)
                     except requests.exceptions.RequestException as e:
                         print(f"checkweb:{e}")
@@ -319,12 +319,12 @@ def checkwebtoken(request, slug):
                         subdomain = webapp.domain
                         if not subdomain.startswith(('http://', 'https://')):
                             subdomain = f"https://{subdomain}"
-                        response = requests.get(f"{subdomain}/devshield")
+                        response = requests.get(f"{subdomain}/devguard")
                         print(response)
                         data = response.json()
 
-                        if "devshield" in data:
-                            if data["devshield"] == webapp.verification_token:
+                        if "devguard" in data:
+                            if data["devguard"] == webapp.verification_token:
                                 webapp.is_verified = True
                                 webapp.save() 
                                 return Response({"message":"Vebsaytingiz tasdiqlandi ✅"}, status=status.HTTP_202_ACCEPTED)
@@ -334,8 +334,8 @@ def checkwebtoken(request, slug):
                                 }, status=status.HTTP_406_NOT_ACCEPTABLE)
                         else:
                             return Response({
-                                    "message":"devshield nomli kalit mavjud emas",
-                                    "eslatma": f"{webapp.domain}/devshield endpointiga murojaat qilganda, javob {{'devshield': verification_token}} bo'lishi kerak!"
+                                    "message":"devguard nomli kalit mavjud emas",
+                                    "eslatma": f"{webapp.domain}/devguard endpointiga murojaat qilganda, javob {{'devguard': verification_token}} bo'lishi kerak!"
                                 }, status=status.HTTP_406_NOT_ACCEPTABLE)
                     else:
                         return Response({"message":"Bu Vebsayt tekshirilgan"}, status=status.HTTP_200_OK)
@@ -475,7 +475,7 @@ class FullScanView(APIView):
             scan_record.save(update_fields=['task_id'])
 
             payload = {
-                "task_id": corr_id,
+                "task_id": corr_id, 
                 "domain": web.domain,
                 "user_id": web.user.id,
                 "slug": web.slug,
