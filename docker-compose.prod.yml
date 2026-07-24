@@ -52,8 +52,6 @@ services:
       RABBITMQ_DEFAULT_PASS: ${PIKA_PASSWORD}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
-    # Production da management UI ni tashqariga ochmang!
-    # Faqat internal network orqali kirish mumkin
     networks:
       - devshield_network
     restart: unless-stopped
@@ -138,6 +136,8 @@ services:
     depends_on:
       django:
         condition: service_started
+      postgres:
+        condition: service_healthy
     networks:
       - devshield_network
     restart: unless-stopped
@@ -166,9 +166,8 @@ services:
       - devshield_network
     restart: unless-stopped
 
-
 # ─────────────────────────────────────────
-#   Named Volumes
+#   Named Volumes & Networks
 # ─────────────────────────────────────────
 volumes:
   postgres_data:
@@ -182,10 +181,6 @@ volumes:
   media_files:
     driver: local
 
-
-# ─────────────────────────────────────────
-#   Networks
-# ─────────────────────────────────────────
 networks:
   devshield_network:
     driver: bridge

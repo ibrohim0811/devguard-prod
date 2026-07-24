@@ -5,14 +5,14 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# System dependencies (psycopg2-binary va boshqa kutubxonalar uchun)
+# System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
  && rm -rf /var/lib/apt/lists/*
 
-# Pip upgrade + packages build
-COPY requirements.txt .
+# Pip upgrade + requirements.txt (Aniq yo'l ko'rsatilgan)
+COPY services/drf/requirements.txt ./requirements.txt
 RUN pip install --upgrade pip \
  && pip install --no-cache-dir --prefix=/install -r requirements.txt
 
@@ -20,10 +20,14 @@ RUN pip install --upgrade pip \
 # ─────────────────────────────────────────
 #   Stage 2: Production Image
 # ─────────────────────────────────────────
-# ⚠️ Bu yerda ham EXACTLY 3.12-slim bo'lishi shart!
 FROM python:3.12-slim
 
 WORKDIR /app
+
+# Environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/services/drf:/app
 
 # Runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -31,23 +35,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
  && rm -rf /var/lib/apt/lists/*
 
-# Copy installed packages from builder
+# Builder bosqichidan paketlarni ko'chirib olish
 COPY --from=builder /install /usr/local
 
-# Application source
+# Loyihaning barcha fayllarini ko'chirish
 COPY . .
-
-# entrypoint.sh ga ijro ruxsatini beramiz
-RUN chmod +x entrypoint.sh
 
 # Static va media papkalari
 RUN mkdir -p /app/staticfiles /app/media
 
-# Non-root user
+# entrypoint.sh ga ijro huquqini berish
+RUN chmod +x /app/services/drf/entrypoint.sh
+
+# Non-root user yaratish va ruxsatlarni berish
 RUN useradd --no-create-home --shell /bin/false appuser \
  && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000
 
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["/app/services/drf/entrypoint.sh"]

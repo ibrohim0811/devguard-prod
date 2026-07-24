@@ -2,11 +2,12 @@ FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
 WORKDIR /app
 
-# Standart debian omborida bor paketlarni o'rnatamiz
+# Skanerlash va tizim vositalarini o'rnatish
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     sqlmap \
@@ -15,11 +16,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     git \
     ca-certificates \
+    build-essential \
+    libpq-dev \
  && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+# Aniq ko'rsatilgan yo'l bo'yicha requirements o'rnatish
+COPY services/fastapi/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
+# Butun loyiha kodini ko'chirish
 COPY . .
 
-CMD ["python", "main.py"]
+# Worker'ni ishga tushirish (agar faylingiz services/fastapi/main.py bo'lsa)
+CMD ["python", "services/fastapi/main.py"]
