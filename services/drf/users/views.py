@@ -500,10 +500,11 @@ class FullScanView(APIView):
             # ✅ Darhol javob qaytaramiz — HTTP so'rov bloklanmaydi!
             # Front-end WebSocket ws://host/ws/scan/{task_id}/ ga ulanib
             # real-time xabarlarni qabul qiladi.
+            host = request.get_host()  # 'api.devguard.uz' yoki 'localhost:8000'
             return Response({
                 "message": "Chuqur skanerlash navbatga qo'shildi. WebSocket orqali natijani kuting.",
                 "task_id": corr_id,
-                "websocket_url": f"ws://{{host}}/ws/scan/{corr_id}/"
+                "websocket_url": f"wss://{host}/ws/scan/{corr_id}/"
             }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
@@ -598,10 +599,11 @@ class Scan(APIView):
             # ✅ Darhol javob qaytaramiz — HTTP so'rov bloklanmaydi!
             # Front-end WebSocket ws://host/ws/scan/{task_id}/ ga ulanib
             # real-time xabarlarni qabul qiladi.
+            host = request.get_host()  # 'api.devguard.uz' yoki 'localhost:8000'
             return Response({
                 "message": "Skanerlash navbatga qo'shildi. WebSocket orqali natijani kuting.",
                 "task_id": corr_id,
-                "websocket_url": f"ws://{{host}}/ws/scan/{corr_id}/"
+                "websocket_url": f"wss://{host}/ws/scan/{corr_id}/"
             }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
