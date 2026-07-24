@@ -372,14 +372,13 @@ class CheckWebappPayment(APIView):
 
             last_scan = ScanHistory.objects.filter(webapp=webapp).order_by('-scanned_at').first()
 
-            if last_scan:
+            if last_scan and last_scan.scanned_at:
                 vaqt_farqi = timezone.now() - last_scan.scanned_at
-
-                if vaqt_farqi < timedelta(days=2):
+                if vaqt_farqi > timedelta(days=2):
                     return Response({
-                        "access": True,
-                        "message": "Oxirgi skandan 2 kun o'tmagan. Skanerlash bepul!"
-                    }, status=status.HTTP_200_OK)
+                        "access": False,
+                        "message": "Oxirgi skanerdan 2 kun o'tdi. Qayta skanerlash uchun to'lov qiling."
+                }, status=status.HTTP_402_PAYMENT_REQUIRED)
 
             transaction = TransactionHistory.objects.create(
                 webapp=webapp,
@@ -432,10 +431,13 @@ class FullScanView(APIView):
         if not web:
             return Response({"error": "Bunday Vebsayt mavjud emas!"}, status=status.HTTP_404_NOT_FOUND)
             
-        transaction = TransactionHistory.objects.filter(webapp=web, user=request.user).order_by("-payment_date").first()
-        if not transaction or transaction.status != TransactionHistory.StatusChoices.SUCCESS:
+        has_successful_payment = TransactionHistory.objects.filter(
+            webapp=web, 
+            user=request.user, 
+            status=TransactionHistory.StatusChoices.SUCCESS
+        ).exists()
+        if not has_successful_payment:
             return Response({"error": "To'lov tasdiqlanmagan!"}, status=status.HTTP_402_PAYMENT_REQUIRED)
-
         if not web.is_verified:
             return Response({"message": "Vebsaytingiz hali tekshirilmagan!"}, status=status.HTTP_466_NOT_ACCEPTABLE)
 
@@ -443,10 +445,10 @@ class FullScanView(APIView):
         last_scan = ScanHistory.objects.filter(webapp=web).order_by('-scanned_at').first()
         if last_scan and last_scan.scanned_at:
             vaqt_farqi = timezone.now() - last_scan.scanned_at
-            if not vaqt_farqi < timedelta(days=2):
+            if vaqt_farqi > timedelta(days=2):
                 return Response({
                     "access": False,
-                    "message": "Oxirgi skandan 2 kun o'tgan!"
+                    "message": "Oxirgi skanerdan 2 kun o'tdi. Qayta skanerlash uchun to'lov qiling."
                 }, status=status.HTTP_402_PAYMENT_REQUIRED)
 
         # Base yozuv ochish
@@ -526,22 +528,27 @@ class Scan(APIView):
         if not web:
             return Response({"error": "Bunday Vebsayt mavjud emas!"}, status=status.HTTP_404_NOT_FOUND)
             
-        transaction = TransactionHistory.objects.filter(webapp=web, user=request.user).order_by("-payment_date").first()
-        if not transaction or transaction.status != TransactionHistory.StatusChoices.SUCCESS:
+        has_successful_payment = TransactionHistory.objects.filter(
+            webapp=web, 
+            user=request.user, 
+            status=TransactionHistory.StatusChoices.SUCCESS
+        ).exists()
+        if not has_successful_payment:
             return Response({"error": "To'lov tasdiqlanmagan!"}, status=status.HTTP_402_PAYMENT_REQUIRED)
-
+             
         if not web.is_verified:
             return Response({"message": "Vebsaytingiz hali tekshirilmagan!"}, status=status.HTTP_466_NOT_ACCEPTABLE)
 
         # 2. Vaqt cheklovini to'g'ri tekshirish
         last_scan = ScanHistory.objects.filter(webapp=web).order_by('-scanned_at').first()
+        # ✅ TO'G'RI VARIANT:
         if last_scan and last_scan.scanned_at:
             vaqt_farqi = timezone.now() - last_scan.scanned_at
-            if not vaqt_farqi < timedelta(days=2):
+            if vaqt_farqi > timedelta(days=2):
                 return Response({
-                    "access": True,
-                    "message": "Oxirgi skandan 2 kun o'tgan !"
-                }, status=status.HTTP_402_PAYMENT_REQUIRED)
+                    "access": False,
+                    "message": "Oxirgi skanerdan 2 kun o'tdi. Qayta skanerlash uchun to'lov qiling."
+        }, status=status.HTTP_402_PAYMENT_REQUIRED)
 
         scan_record, created = ScanHistory.objects.get_or_create(
             webapp=web,
