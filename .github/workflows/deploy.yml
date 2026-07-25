@@ -46,7 +46,7 @@ jobs:
             context: .
             dockerfile: ./services/bot/Dockerfile
           - service: nginx
-            context: .
+            context: ./nginx
             dockerfile: ./nginx/Dockerfile
 
     steps:
