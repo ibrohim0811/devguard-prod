@@ -104,4 +104,4 @@ class ScanHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model= ScanHistory
         fields = "__all__"
-        read_only_fields = "__all__"
+        read_only_fields = ("webapp", "scanned_at", "result_summary", "scan_type", "task_id")
