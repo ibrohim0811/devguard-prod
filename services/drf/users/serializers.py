@@ -99,4 +99,8 @@ class StartScanSerializer(serializers.Serializer):
         required=True 
     )
 
-    
+
+class ScanHistorySerializer(serializers.ModelField):
+    class Meta:
+        fields = "__all__"
+        read_only_fields = "__all__"

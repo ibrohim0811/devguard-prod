@@ -12,7 +12,7 @@ RegisterCreateAPIView, ProfileRetrieveAPIView,
 TransactionListCreateAPIView, TransactionDetailAPIView,
 checkwebtoken, VerifyOTPAPIView, ResendOTPAPIView,
 WebApplicationDeleteBySlugAPIView, CheckWebappPayment,
-FullScanView, Scan
+FullScanView, Scan, ScanHistoryLIstView
 )
 
 
@@ -41,7 +41,10 @@ urlpatterns = [
 
     #scan
     path('webapp-scan/', FullScanView.as_view(), name="scan"),
-    path('webapp-scan/ddos', Scan.as_view(), name="scan-ddos")
+    path('webapp-scan/ddos', Scan.as_view(), name="scan-ddos"),
+
+    #scan history
+    path("webapps/scan-history/<slug:slug>", ScanHistoryLIstView.as_view(), name="scan_history")
 
 ]
 

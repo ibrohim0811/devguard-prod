@@ -15,6 +15,8 @@ DEBUG = False
 
 ALLOWED_HOSTS = [
     'api.devguard.uz',
+    'ibrohim.api.devguard.uz',
+    '.devguard.uz',
     'localhost',
     '127.0.0.1',
     '84.235.169.116',
@@ -29,7 +31,8 @@ USE_X_FORWARDED_PORT = True
 CSRF_TRUSTED_ORIGINS = [
     'https://api.devguard.uz',
     'http://api.devguard.uz',
-    
+    'https://ibrohim.api.devguard.uz',
+    'http://ibrohim.api.devguard.uz',
 ]
 
 
