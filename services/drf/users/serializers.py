@@ -5,7 +5,7 @@ from rest_framework.validators import UniqueValidator
 
 
 from .validations import validate_phone_number, validate_email  
-from .models import Users, WebApplications, TransactionHistory
+from .models import Users, WebApplications, TransactionHistory, ScanHistory
 
 
 class RegisterSerializer(ModelSerializer):
@@ -102,5 +102,6 @@ class StartScanSerializer(serializers.Serializer):
 
 class ScanHistorySerializer(serializers.ModelField):
     class Meta:
+        model= ScanHistory
         fields = "__all__"
         read_only_fields = "__all__"
