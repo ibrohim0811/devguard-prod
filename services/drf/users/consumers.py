@@ -6,7 +6,18 @@ from channels.db import database_sync_to_async
 class ScanProgressConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
-        self.task_id = self.scope['url_route']['kwargs']['task_id']
+        user = self.scope.get('user')
+        self.task_id = self.scope['url_route']['kwargs'].get('task_id')
+
+        if not user or not user.is_authenticated:
+            await self.close(code=4001)
+            return
+
+        is_owner = await self._check_ownership(user, self.task_id)
+        if not is_owner:
+            await self.close(code=4003)
+            return
+
         self.room_group_name = f'scan_{self.task_id}'
 
         await self.channel_layer.group_add(
@@ -15,11 +26,17 @@ class ScanProgressConsumer(AsyncWebsocketConsumer):
         )
         await self.accept()
 
+    @database_sync_to_async
+    def _check_ownership(self, user, task_id: str) -> bool:
+        from users.models import ScanHistory
+        return ScanHistory.objects.filter(task_id=task_id, webapp__user=user).exists()
+
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(
-            self.room_group_name,
-            self.channel_name
-        )
+        if hasattr(self, 'room_group_name'):
+            await self.channel_layer.group_discard(
+                self.room_group_name,
+                self.channel_name
+            )
 
     async def scan_status_update(self, event):
         """FastAPI dan kelgan xabarni front-endga yuboradi va DB ni yangilaydi"""

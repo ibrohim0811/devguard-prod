@@ -6,7 +6,8 @@ import uuid
 import requests
 import logging
 from bs4 import BeautifulSoup
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from .validations import validate_safe_url_or_domain
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
@@ -47,6 +48,7 @@ from .tasks import send_otp_email_task
 
 @extend_schema(tags=['Register'])
 class RegisterCreateAPIView(APIView):
+    permission_classes = [AllowAny]
     serializer_class = RegisterSerializer
 
     def post(self, request, *args, **kwargs):
@@ -80,6 +82,7 @@ class RegisterCreateAPIView(APIView):
 
 @extend_schema(tags=['Register'])
 class VerifyOTPAPIView(APIView):
+    permission_classes = [AllowAny]
     serializer_class = VerifyOTPSerializer
 
     def post(self, request, *args, **kwargs):
@@ -150,6 +153,7 @@ class VerifyOTPAPIView(APIView):
 
 @extend_schema(tags=['Register'])
 class ResendOTPAPIView(APIView):
+    permission_classes = [AllowAny]
     serializer_class = ResendOTPSerializer
 
     def post(self, request, *args, **kwargs):
@@ -248,9 +252,11 @@ class WebApplicationDeleteBySlugAPIView(DestroyAPIView):
 
 @extend_schema(tags=["user/payment"])
 class TransactionListCreateAPIView(ListAPIView):
-    queryset = TransactionHistory.objects.all()
     serializer_class = TransactionSerializer
-    permission_classes = [IsAuthenticated, ]
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return TransactionHistory.objects.filter(user=self.request.user)
 
     
 
@@ -272,11 +278,18 @@ class TransactionDetailAPIView(RetrieveAPIView):
 def checkwebtoken(request, slug):
 
     if request.method == 'GET':
-        print(f"slug:{slug}")
+        logger.info(f"checkwebtoken request for slug: {slug}")
         webapp = WebApplications.objects.filter(user=request.user, slug=slug).first()
         
         if webapp:
             if not webapp.is_verified:
+                is_safe, safe_msg_or_host = validate_safe_url_or_domain(webapp.domain)
+                if not is_safe:
+                    return Response({
+                        "success": False,
+                        "message": f"Domen tekshirib bo'linmadi yoki rad etildi: {safe_msg_or_host}"
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
                 if not webapp.is_subdomain:
                     web = webapp
                     web_link = web.domain
@@ -310,7 +323,7 @@ def checkwebtoken(request, slug):
                                 "message":"❌ Sahifada 'devguard' nomli meta teg topilmadi."
                             }, status=status.HTTP_400_BAD_REQUEST)
                     except requests.exceptions.RequestException as e:
-                        print(f"checkweb:{e}")
+                        logger.error(f"checkweb error: {e}")
                         return Response({
                                 "success":False,
                                 "message":"Serverda Xatolik!"
@@ -320,24 +333,30 @@ def checkwebtoken(request, slug):
                         subdomain = webapp.domain
                         if not subdomain.startswith(('http://', 'https://')):
                             subdomain = f"https://{subdomain}"
-                        response = requests.get(f"{subdomain}/devguard")
-                        print(response)
-                        data = response.json()
+                        try:
+                            response = requests.get(f"{subdomain}/devguard", timeout=10)
+                            data = response.json()
 
-                        if "devguard" in data:
-                            if data["devguard"] == webapp.verification_token:
-                                webapp.is_verified = True
-                                webapp.save() 
-                                return Response({"message":"Vebsaytingiz tasdiqlandi ✅"}, status=status.HTTP_202_ACCEPTED)
+                            if "devguard" in data:
+                                if data["devguard"] == webapp.verification_token:
+                                    webapp.is_verified = True
+                                    webapp.save() 
+                                    return Response({"message":"Vebsaytingiz tasdiqlandi ✅"}, status=status.HTTP_202_ACCEPTED)
+                                else:
+                                    return Response({
+                                        "message":"Token mos emas!"
+                                    }, status=status.HTTP_406_NOT_ACCEPTABLE)
                             else:
                                 return Response({
-                                    "message":"Token mos emas!"
-                                }, status=status.HTTP_406_NOT_ACCEPTABLE)
-                        else:
+                                        "message":"devguard nomli kalit mavjud emas",
+                                        "eslatma": f"{webapp.domain}/devguard endpointiga murojaat qilganda, javob {{'devguard': verification_token}} bo'lishi kerak!"
+                                    }, status=status.HTTP_406_NOT_ACCEPTABLE)
+                        except requests.exceptions.RequestException as e:
+                            logger.error(f"checkweb subdomain error: {e}")
                             return Response({
-                                    "message":"devguard nomli kalit mavjud emas",
-                                    "eslatma": f"{webapp.domain}/devguard endpointiga murojaat qilganda, javob {{'devguard': verification_token}} bo'lishi kerak!"
-                                }, status=status.HTTP_406_NOT_ACCEPTABLE)
+                                "success": False,
+                                "message": "Serverda Xatolik!"
+                            }, status=status.HTTP_502_BAD_GATEWAY)
                     else:
                         return Response({"message":"Bu Vebsayt tekshirilgan"}, status=status.HTTP_200_OK)
             else:
@@ -352,8 +371,8 @@ def checkwebtoken(request, slug):
                     
 
 @extend_schema(tags=["webapp/payment"], request=CheckPaymentSerializer)
-@permission_classes([IsAuthenticated, ])
 class CheckWebappPayment(APIView):
+    permission_classes = [IsAuthenticated]
 
     
     def post(self, request):
@@ -404,10 +423,12 @@ class CheckWebappPayment(APIView):
 
 def get_rabbitmq_connection():
     """RabbitMQ ulanish parametrlari uchun yordamchi funksiya"""
-    credentials = pika.PlainCredentials(
-        os.getenv("PIKA_USER", "guest"), 
-        os.getenv("PIKA_PASSWORD", "guest")
-    )
+    pika_user = os.getenv("PIKA_USER")
+    pika_password = os.getenv("PIKA_PASSWORD")
+    if not pika_user or not pika_password:
+        raise ValueError("RabbitMQ foydalanuvchi va paroli (PIKA_USER, PIKA_PASSWORD) .env da sozlanmagan!")
+
+    credentials = pika.PlainCredentials(pika_user, pika_password)
     parameters = pika.ConnectionParameters(
         host=os.getenv("RABBITMQ_HOST", "127.0.0.1"),
         port=5672,
@@ -441,6 +462,10 @@ class FullScanView(APIView):
             return Response({"error": "To'lov tasdiqlanmagan!"}, status=status.HTTP_402_PAYMENT_REQUIRED)
         if not web.is_verified:
             return Response({"message": "Vebsaytingiz hali tekshirilmagan!"}, status=status.HTTP_466_NOT_ACCEPTABLE)
+
+        is_safe, safe_err = validate_safe_url_or_domain(web.domain)
+        if not is_safe:
+            return Response({"error": f"Skanerlash rad etildi: {safe_err}"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Vaqt cheklovini tekshirish
         last_scan = ScanHistory.objects.filter(webapp=web).order_by('-scanned_at').first()
@@ -513,7 +538,7 @@ class FullScanView(APIView):
         except Exception as e:
             logger.error(f"FullScan RabbitMQ xatoligi: {e}")
             return Response({
-                "error": f"Skanerlash jarayonida xato yuz berdi: {str(e)}"
+                "error": "Skanerlash jarayonida xatolik yuz berdi. Iltimos keyinroq qayta urinib ko'ring."
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -543,16 +568,19 @@ class Scan(APIView):
         if not web.is_verified:
             return Response({"message": "Vebsaytingiz hali tekshirilmagan!"}, status=status.HTTP_466_NOT_ACCEPTABLE)
 
+        is_safe, safe_err = validate_safe_url_or_domain(web.domain)
+        if not is_safe:
+            return Response({"error": f"Skanerlash rad etildi: {safe_err}"}, status=status.HTTP_400_BAD_REQUEST)
+
         # 2. Vaqt cheklovini to'g'ri tekshirish
         last_scan = ScanHistory.objects.filter(webapp=web).order_by('-scanned_at').first()
-        # ✅ TO'G'RI VARIANT:
         if last_scan and last_scan.scanned_at:
             vaqt_farqi = timezone.now() - last_scan.scanned_at
             if vaqt_farqi > timedelta(days=2):
                 return Response({
                     "access": False,
                     "message": "Oxirgi skanerdan 2 kun o'tdi. Qayta skanerlash uchun to'lov qiling."
-        }, status=status.HTTP_402_PAYMENT_REQUIRED)
+                }, status=status.HTTP_402_PAYMENT_REQUIRED)
 
         scan_record, created = ScanHistory.objects.get_or_create(
             webapp=web,
@@ -614,7 +642,7 @@ class Scan(APIView):
         except Exception as e:
             logger.error(f"Scan RabbitMQ xatoligi: {e}")
             return Response({
-                "error": f"Skanerlash jarayonida xato yuz berdi: {str(e)}"
+                "error": "Skanerlash jarayonida xatolik yuz berdi. Iltimos keyinroq qayta urinib ko'ring."
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

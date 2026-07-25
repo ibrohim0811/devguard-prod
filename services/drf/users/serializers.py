@@ -8,8 +8,11 @@ from .validations import validate_phone_number, validate_email
 from .models import Users, WebApplications, TransactionHistory, ScanHistory
 
 
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+
 class RegisterSerializer(ModelSerializer):
-    password = CharField(write_only=True, min_length=6)
+    password = CharField(write_only=True, min_length=8)
 
     class Meta:
         model = Users
@@ -18,11 +21,18 @@ class RegisterSerializer(ModelSerializer):
     def validate(self, attrs):
         phone_number = attrs.get('phone_number')
         email = attrs.get('email')
-        
+        password = attrs.get('password')
+
         if not validate_phone_number(phone_number):
             raise serializers.ValidationError({"phone_number": "Telefon raqam formati xato!"})
         if not validate_email(email):
             raise serializers.ValidationError({"email": "Email formati xato!"})
+
+        if password:
+            try:
+                validate_password(password)
+            except DjangoValidationError as e:
+                raise serializers.ValidationError({"password": list(e.messages)})
         
         if Users.objects.filter(email=email).exists():
             raise serializers.ValidationError({"email": "Ushbu email allaqachon ro'yxatdan o'tgan!"})

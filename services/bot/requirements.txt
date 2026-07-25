@@ -29,4 +29,3 @@ django-celery-results>=2.5.0
 django-redis>=5.4.0
 python-slugify==8.0.4
 unicode-slugify==0.1.5
-slugify

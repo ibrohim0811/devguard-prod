@@ -46,7 +46,9 @@ async def send_status_to_django(task_id: str, payload: dict):
 # ------------------------------------
 DB_NAME = os.getenv("NAME", "devshield")
 DB_USER = os.getenv("POSTGRES_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "ibrohim0811")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+if not DB_PASSWORD:
+    raise RuntimeError("DB_PASSWORD environment variable is required and missing!")
 DB_HOST = os.getenv("HOST", "postgres")
 DB_PORT = os.getenv("PORT", "5432")
 

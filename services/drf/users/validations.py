@@ -1,4 +1,57 @@
 import re
+import socket
+import ipaddress
+from urllib.parse import urlparse
+
+def is_ip_private(ip_str: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return (
+            ip.is_private or
+            ip.is_loopback or
+            ip.is_link_local or
+            ip.is_reserved or
+            ip.is_multicast or
+            ip.is_unspecified
+        )
+    except ValueError:
+        return True
+
+def validate_safe_url_or_domain(url_or_domain: str) -> tuple[bool, str]:
+    """
+    Validates that a URL or domain does not point to internal/private networks or cloud metadata (SSRF prevention).
+    Returns (is_safe, host_or_error_message).
+    """
+    if not url_or_domain:
+        return False, "Bo'sh domen yoki URL!"
+
+    raw = str(url_or_domain).strip()
+    if not raw.startswith(('http://', 'https://')):
+        url_to_parse = f"http://{raw}"
+    else:
+        url_to_parse = raw
+
+    try:
+        parsed = urlparse(url_to_parse)
+        hostname = parsed.hostname
+        if not hostname:
+            return False, "Noto'g'ri domen nomi!"
+
+        if hostname.lower() in ("169.254.169.254", "metadata.google.internal", "instance-data"):
+            return False, "Manzilga ulanish rad etildi (Cloud Metadata Host)!"
+
+        addr_info = socket.getaddrinfo(hostname, None)
+        if not addr_info:
+            return False, "Domen IP manzilini aniqlab bo'lmadi!"
+
+        for item in addr_info:
+            ip_str = item[4][0]
+            if is_ip_private(ip_str):
+                return False, f"Ichki/Xususiy IP manzilga so'rov yuborish rad etildi ({ip_str})!"
+
+        return True, hostname
+    except Exception as e:
+        return False, f"Domen tekshirishda xatolik: {str(e)}"
 
 def validate_phone_number(phone_number: str) -> str | None:
     # Faqat raqamlarni qoldiramiz
