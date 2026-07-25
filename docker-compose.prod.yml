@@ -65,15 +65,15 @@ services:
   #   Application
   # ─────────────────────────────────────────
 
-  # HTTP + WebSocket (Gunicorn + UvicornWorker)
+  # HTTP + WebSocket (entrypoint.sh orqali Daphne ishga tushadi)
   django:
     image: ghcr.io/ibrohim0811/devshield-django:latest
     container_name: devshield_django
-    command: gunicorn devshield.asgi:application -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --workers 2 --timeout 120
+    # command olib tashlandi — shunda entrypoint.sh avtomatik migrate/collectstatic qiladi va Daphne'ni ko'taradi
     env_file: .env
     volumes:
-      - static_files:/app/staticfiles
-      - media_files:/app/media
+      - static_files:/app/services/drf/staticfiles
+      - media_files:/app/services/drf/media
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,7 +87,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1G
 
   celery:
     image: ghcr.io/ibrohim0811/devshield-django:latest
@@ -95,7 +95,7 @@ services:
     command: celery -A devshield worker --loglevel=info --concurrency=2
     env_file: .env
     volumes:
-      - media_files:/app/media
+      - media_files:/app/services/drf/media
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,7 +109,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 768M
 
   fastapi_worker:
     image: ghcr.io/ibrohim0811/devshield-fastapi-worker:latest
@@ -133,7 +133,7 @@ services:
     container_name: devshield_bot
     environment:
       - DJANGO_SETTINGS_MODULE=devshield.settings
-      - PYTHONPATH=/app
+      - PYTHONPATH=/app/services/drf
     env_file: .env
     depends_on:
       django:
@@ -160,8 +160,8 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
-      - static_files:/app/staticfiles:ro
-      - media_files:/app/media:ro
+      - static_files:/app/services/drf/staticfiles:ro
+      - media_files:/app/services/drf/media:ro
     depends_on:
       - django
     networks:
