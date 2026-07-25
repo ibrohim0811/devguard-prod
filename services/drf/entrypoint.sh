@@ -20,5 +20,5 @@ python manage.py migrate --noinput
 echo "📦 Static fayllar yig'ilmoqda..."
 python manage.py collectstatic --noinput
 
-echo "🚀 Daphne server ishga tushirilmoqda..."
-exec daphne -b 0.0.0.0 -p 8000 devshield.asgi:application
+echo "🚀 Gunicorn HTTP server ishga tushirilmoqda..."
+exec gunicorn devshield.wsgi:application --bind 0.0.0.0:8000 --workers "${GUNICORN_WORKERS:-3}" --access-logfile - --error-logfile -

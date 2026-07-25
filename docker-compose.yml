@@ -82,6 +82,23 @@ services:
       - devshield_network
     restart: unless-stopped
 
+  # WebSocket requests must never reach the WSGI/Gunicorn service above.
+  django_asgi:
+    build:
+      context: .
+      dockerfile: services/drf/Dockerfile
+    container_name: devshield_django_asgi
+    command: daphne -b 0.0.0.0 -p 8000 devshield.asgi:application
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - devshield_network
+    restart: unless-stopped
+
   celery:
     build:
       context: .
@@ -145,6 +162,7 @@ services:
       - media_files:/app/media:ro
     depends_on:
       - django
+      - django_asgi
     networks:
       - devshield_network
     restart: unless-stopped

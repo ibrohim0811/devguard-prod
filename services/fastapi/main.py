@@ -3,8 +3,8 @@ import aio_pika
 import json
 import os
 import asyncpg
+from channels_redis.core import RedisChannelLayer
 from fastapi import FastAPI
-from redis.asyncio import Redis
 from dotenv import load_dotenv
 
 from analyze import analyze_logs_with_groq
@@ -21,24 +21,23 @@ app = FastAPI()
 # Docker da REDIS_HOST=redis, local da 127.0.0.1
 _redis_host = os.getenv("REDIS_HOST", "127.0.0.1")
 _redis_port = int(os.getenv("REDIS_PORT", 6379))
-redis_client = Redis(host=_redis_host, port=_redis_port, db=0)
+channel_layer = RedisChannelLayer(
+    hosts=[f"redis://{_redis_host}:{_redis_port}/0"],
+)
 
 async def send_status_to_django(task_id: str, payload: dict):
     """Django Channels'ning Redis guruhiga real-time status yuborish"""
     if not task_id:
         return
     
-    channel_layer_name = f'scan_{task_id}'
-    
-    event = {
-        "type": "scan_status_update",  # Django Consumer'dagi funksiya nomi
-        "message": payload
-    }
-    
-    # Django channels_redis xabarlarni 'asgi:group:<group_name>' kalitida kutadi
-    await redis_client.publish(
-        f"asgi:group:{channel_layer_name}",
-        json.dumps(event)
+    # ``group_send`` is required: publishing to ``asgi:group:*`` does not
+    # implement the Channels Redis group protocol and drops the event.
+    await channel_layer.group_send(
+        f"scan_{task_id}",
+        {
+            "type": "scan_status_update",
+            "message": payload,
+        },
     )
 
 

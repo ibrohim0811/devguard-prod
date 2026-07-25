@@ -65,15 +65,15 @@ services:
   #   Application
   # ─────────────────────────────────────────
 
-  # HTTP + WebSocket (entrypoint.sh orqali Daphne ishga tushadi)
+  # HTTP requests are served by WSGI/Gunicorn.
   django:
     image: ghcr.io/ibrohim0811/devshield-django:latest
     container_name: devshield_django
-    # command olib tashlandi — shunda entrypoint.sh avtomatik migrate/collectstatic qiladi va Daphne'ni ko'taradi
+    # The entrypoint applies migrations, collects static files, then starts Gunicorn.
     env_file: .env
     volumes:
-      - static_files:/app/services/drf/staticfiles
-      - media_files:/app/services/drf/media
+      - static_files:/app/staticfiles
+      - media_files:/app/media
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,13 +89,32 @@ services:
         limits:
           memory: 1G
 
+  # A separate ASGI process guarantees that /ws/ never reaches Gunicorn.
+  django_asgi:
+    image: ghcr.io/ibrohim0811/devshield-django:latest
+    container_name: devshield_django_asgi
+    command: daphne -b 0.0.0.0 -p 8000 devshield.asgi:application
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - devshield_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
   celery:
     image: ghcr.io/ibrohim0811/devshield-django:latest
     container_name: devshield_celery
     command: celery -A devshield worker --loglevel=info --concurrency=2
     env_file: .env
     volumes:
-      - media_files:/app/services/drf/media
+      - media_files:/app/media
     depends_on:
       postgres:
         condition: service_healthy
@@ -160,10 +179,11 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
-      - static_files:/app/services/drf/staticfiles:ro
-      - media_files:/app/services/drf/media:ro
+      - static_files:/app/staticfiles:ro
+      - media_files:/app/media:ro
     depends_on:
       - django
+      - django_asgi
     networks:
       - devshield_network
     restart: unless-stopped

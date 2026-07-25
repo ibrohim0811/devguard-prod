@@ -5,8 +5,8 @@ uvicorn>=0.34.0
 # RabbitMQ async client
 aio-pika==9.4.3
 
-# Redis async client
-redis==8.0.1
+# Channels Redis client (used to deliver WebSocket group events)
+channels_redis>=4.2.0
 
 # HTTP client (Groq API uchun)
 httpx==0.28.1
@@ -17,4 +17,3 @@ python-dotenv==1.2.2
 # Async
 anyio==4.14.1
 asyncpg>=0.29.0
-
