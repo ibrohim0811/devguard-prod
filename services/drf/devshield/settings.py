@@ -203,14 +203,19 @@ SPECTACULAR_SETTINGS = {
 }
 
 CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            # Docker da REDIS_HOST=redis, local da 127.0.0.1
-            "hosts": [(os.getenv('REDIS_HOST', '127.0.0.1'), int(os.getenv('REDIS_PORT', 6379)))],
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("redis", 6379)],  # docker-compose'dagi redis servisi
+            "capacity": 1500,            # Bitta kanal (channel) kutishi mumkin bo'lgan maksimal xabarlar soni
+            "expiry": 10,                # Xabarlarning Redis'da saqlanish vaqti (soniya)
+            "channel_capacity": {
+                "http.request": 200,
+            },
         },
     },
 }
+
 
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND")
 EMAIL_HOST = os.getenv("EMAIL_HOST")
