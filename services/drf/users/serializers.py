@@ -100,7 +100,7 @@ class StartScanSerializer(serializers.Serializer):
     )
 
 
-class ScanHistorySerializer(serializers.ModelField):
+class ScanHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model= ScanHistory
         fields = "__all__"
