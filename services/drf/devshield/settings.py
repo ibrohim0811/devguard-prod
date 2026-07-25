@@ -209,10 +209,7 @@ CHANNEL_LAYERS = {
             "hosts": [("redis", 6379)],
             "capacity": 1500,
             "expiry": 10,
-            # ⬇️ Connection Timeout xatosini oldini oluvchi muhim parametrlar:
-            "channel_capacity": {
-                "http.request": 200,
-            },
+            "symmetric_encryption_keys": [],
         },
     },
 }

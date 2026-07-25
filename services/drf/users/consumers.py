@@ -14,7 +14,7 @@ class ScanProgressConsumer(AsyncWebsocketConsumer):
         try:
             self.task_id = self.scope['url_route']['kwargs'].get('task_id')
 
-            # 1. Query string'dan token olish
+            # 1. Query String parametridan token ajratish
             query_string = self.scope.get('query_string', b'').decode('utf-8')
             query_params = parse_qs(query_string)
             token_list = query_params.get('token', [])
@@ -25,7 +25,7 @@ class ScanProgressConsumer(AsyncWebsocketConsumer):
 
             raw_token = token_list[0]
 
-            # 2. Token orqali user-ni aniqlash
+            # 2. Token orqali foydalanuvchini aniqlash
             user = await self._get_user_from_token(raw_token)
             if not user or not user.is_authenticated:
                 await self.close(code=4001)
@@ -37,10 +37,10 @@ class ScanProgressConsumer(AsyncWebsocketConsumer):
                 await self.close(code=4003)
                 return
 
-            # 4. AVAL ulanishni qabul qilamiz (Handshake muvaffaqiyatli bo'lishi uchun)
+            # 4. BIRINCHI NAVBATDA WebSocket-ni qabul qilamiz (Handshake muvaffaqiyatli tugashi uchun)
             await self.accept()
 
-            # 5. KEYIN Redis guruhiga qo'shamiz
+            # 5. KEYIN Redis channel layer guruhiga qo'shamiz
             self.room_group_name = f'scan_{self.task_id}'
             await self.channel_layer.group_add(
                 self.room_group_name,
@@ -53,20 +53,24 @@ class ScanProgressConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             print(f"❌ WS Connect Error: {e}")
             await self.close(code=1011)
+
+    async def receive(self, text_data=None, bytes_data=None):
+        """Frontend tomondan kelgan ping/keep-alive xabarlarini qayta ishlash"""
+        if text_data == "ping":
+            await self.send(text_data="pong")
+
     @database_sync_to_async
     def _get_user_from_token(self, token_key):
-        """JWT Access Tokendan User-ni aniqlash"""
         try:
             access_token = AccessToken(token_key)
             user_id = access_token['user_id']
             return User.objects.get(id=user_id)
         except Exception as e:
-            print(f"❌ JWT Parsing Error: {e}")
+            print(f"❌ JWT Error: {e}")
             return None
 
     @database_sync_to_async
     def _check_ownership(self, user, task_id: str) -> bool:
-        """ScanHistory va User mosligini tekshirish"""
         from users.models import ScanHistory
         return ScanHistory.objects.filter(task_id=task_id, webapp__user=user).exists()
 
@@ -78,7 +82,6 @@ class ScanProgressConsumer(AsyncWebsocketConsumer):
             )
 
     async def scan_status_update(self, event):
-        """FastAPI dan kelgan xabarni front-endga yuboradi va DB ni yangilaydi"""
         message = event['message']
         await self.send(text_data=json.dumps(message))
 
@@ -94,12 +97,8 @@ class ScanProgressConsumer(AsyncWebsocketConsumer):
     def _save_report(self, task_id: str, report: str, status: str):
         try:
             from users.models import ScanHistory
-            updated_count = ScanHistory.objects.filter(task_id=task_id).update(
+            ScanHistory.objects.filter(task_id=task_id).update(
                 result_summary=report
             )
-            if updated_count == 0:
-                print(f"⚠️ ScanHistory topilmadi: task_id={task_id}")
-            else:
-                print(f"✅ ScanHistory yangilandi: task_id={task_id}, status={status}")
         except Exception as e:
-            print(f"❌ DB yangilashda xato: {e}")
+            print(f"❌ DB update error: {e}")
