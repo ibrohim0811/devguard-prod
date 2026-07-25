@@ -2,6 +2,7 @@ import asyncio
 import aio_pika
 import json
 import os
+import asyncpg
 from fastapi import FastAPI
 from redis.asyncio import Redis
 from dotenv import load_dotenv
@@ -39,6 +40,43 @@ async def send_status_to_django(task_id: str, payload: dict):
         f"asgi:group:{channel_layer_name}",
         json.dumps(event)
     )
+
+
+# ------------------------------------
+#   PostgreSQL Direct Updater (Fallback)
+# ------------------------------------
+DB_NAME = os.getenv("NAME", "devshield")
+DB_USER = os.getenv("POSTGRES_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "ibrohim0811")
+DB_HOST = os.getenv("HOST", "postgres")
+DB_PORT = os.getenv("PORT", "5432")
+
+async def update_scan_history_in_db(task_id: str, report: str):
+    """Saves AI summary directly to PostgreSQL database"""
+    if not task_id:
+        return
+    hosts_to_try = [DB_HOST, "127.0.0.1", "localhost"]
+    # Unikal hostlar ro'yxatini tartib bilan saqlaymiz
+    hosts = list(dict.fromkeys(hosts_to_try))
+    
+    for host in hosts:
+        try:
+            conn = await asyncpg.connect(
+                user=DB_USER,
+                password=DB_PASSWORD,
+                database=DB_NAME,
+                host=host,
+                port=int(DB_PORT)
+            )
+            try:
+                query = "UPDATE users_scanhistory SET result_summary = $1 WHERE task_id = $2::uuid"
+                status = await conn.execute(query, report, task_id)
+                print(f"✅ DB UPDATE via asyncpg ({host}): task_id={task_id}, status={status}")
+                return
+            finally:
+                await conn.close()
+        except Exception as e:
+            print(f"⚠️ DB UPDATE attempt failed for host {host}: {e}")
 
 
 def clean_and_truncate_log(log_text: str, max_chars: int = 5000) -> str:
@@ -97,6 +135,9 @@ async def process_scan_task(message: aio_pika.IncomingMessage):
                 
                 r = await analyze_logs_with_groq(clean_and_truncate_log(scan_result))
                 
+                # Natijani bazaga saqlaymiz
+                await update_scan_history_in_db(task_id, r)
+                
                 # Natijani Django kutayotgan navbatga yuboramiz
                 routing_key = reply_to_queue if reply_to_queue else "fullscan_results"
                 
@@ -130,6 +171,7 @@ async def process_scan_task(message: aio_pika.IncomingMessage):
             else:
                 error_log = stderr.decode().strip()
                 print(f"❌ Skanerlashda xatolik yuz berdi ({slug}): {error_log}")
+                await update_scan_history_in_db(task_id, f"Skanerlashda xatolik: {error_log}")
                 await send_status_to_django(task_id, {
                     "status": "failed", 
                     "message": f"Skanerlashda xatolik: {error_log}"
@@ -182,6 +224,9 @@ async def scan(message: aio_pika.IncomingMessage):
                 
                 r = await analyze_logs_with_groq(clean_and_truncate_log(scan_result))
                 
+                # Natijani bazaga saqlaymiz
+                await update_scan_history_in_db(task_id, r)
+                
                 routing_key = reply_to_queue if reply_to_queue else "scan_results"
                 
                 response_payload = {
@@ -217,6 +262,7 @@ async def scan(message: aio_pika.IncomingMessage):
             else:
                 error_log = stderr.decode().strip()
                 print(f"❌ Skanerlashda xatolik yuz berdi ({slug}): {error_log}")
+                await update_scan_history_in_db(task_id, f"Skanerlashda xatolik: {error_log}")
                 await send_status_to_django(task_id, {
                     "status": "failed", 
                     "message": f"Skanerlashda xatolik: {error_log}"

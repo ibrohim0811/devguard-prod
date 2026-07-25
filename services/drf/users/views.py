@@ -455,7 +455,8 @@ class FullScanView(APIView):
         # Base yozuv ochish
         scan_record, created = ScanHistory.objects.get_or_create(
             webapp=web,
-            defaults={"result_summary": "Chuqur skanerlash navbatda..."}
+            result_summary="Chuqur skanerlash navbatda...",
+            scan_type=ScanHistory.TypeChoices.FULL_SCAN
         )
         if not created:
             scan_record.result_summary = "Chuqur skanerlash navbatda..."
@@ -502,10 +503,11 @@ class FullScanView(APIView):
             # Front-end WebSocket ws://host/ws/scan/{task_id}/ ga ulanib
             # real-time xabarlarni qabul qiladi.
             host = request.get_host()  # 'api.devguard.uz' yoki 'localhost:8000'
+            scheme = "wss" if request.is_secure() else "ws"
             return Response({
                 "message": "Chuqur skanerlash navbatga qo'shildi. WebSocket orqali natijani kuting.",
                 "task_id": corr_id,
-                "websocket_url": f"wss://{host}/ws/scan/{corr_id}/"
+                "websocket_url": f"{scheme}://{host}/ws/scan/{corr_id}/"
             }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
@@ -554,7 +556,8 @@ class Scan(APIView):
 
         scan_record, created = ScanHistory.objects.get_or_create(
             webapp=web,
-            defaults={"result_summary": "Skanerlash navbatda..."}
+            result_summary="Chuqur skanerlash navbatda...",
+            scan_type=ScanHistory.TypeChoices.DDOS
         )
         if not created:
             scan_record.result_summary = "Skanerlash navbatda..."
@@ -601,10 +604,11 @@ class Scan(APIView):
             # Front-end WebSocket ws://host/ws/scan/{task_id}/ ga ulanib
             # real-time xabarlarni qabul qiladi.
             host = request.get_host()  # 'api.devguard.uz' yoki 'localhost:8000'
+            scheme = "wss" if request.is_secure() else "ws"
             return Response({
                 "message": "Skanerlash navbatga qo'shildi. WebSocket orqali natijani kuting.",
                 "task_id": corr_id,
-                "websocket_url": f"wss://{host}/ws/scan/{corr_id}/"
+                "websocket_url": f"{scheme}://{host}/ws/scan/{corr_id}/"
             }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
@@ -612,6 +616,8 @@ class Scan(APIView):
             return Response({
                 "error": f"Skanerlash jarayonida xato yuz berdi: {str(e)}"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 
 @extend_schema(tags=["user/webapps"])
 class ScanHistoryLIstView(ListAPIView):
