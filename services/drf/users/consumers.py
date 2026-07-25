@@ -11,44 +11,48 @@ User = get_user_model()
 class ScanProgressConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
-        self.task_id = self.scope['url_route']['kwargs'].get('task_id')
+        try:
+            self.task_id = self.scope['url_route']['kwargs'].get('task_id')
 
-        # 1. Query String dan (?token=...) token-ni ajratib olamiz
-        query_string = self.scope.get('query_string', b'').decode('utf-8')
-        query_params = parse_qs(query_string)
-        token_list = query_params.get('token', [])
+            # 1. Query string'dan token olish
+            query_string = self.scope.get('query_string', b'').decode('utf-8')
+            query_params = parse_qs(query_string)
+            token_list = query_params.get('token', [])
 
-        if not token_list:
-            print("⚠️ WS Error: Token uzatilmadi")
-            await self.close(code=4001)
-            return
+            if not token_list:
+                await self.close(code=4001)
+                return
 
-        raw_token = token_list[0]
+            raw_token = token_list[0]
 
-        # 2. Token orqali foydalanuvchini bazadan topamiz
-        user = await self._get_user_from_token(raw_token)
+            # 2. Token orqali user-ni aniqlash
+            user = await self._get_user_from_token(raw_token)
+            if not user or not user.is_authenticated:
+                await self.close(code=4001)
+                return
 
-        if not user or not user.is_authenticated:
-            print("⚠️ WS Error: Token noto'g'ri yoki yaroqsiz")
-            await self.close(code=4001)
-            return
+            # 3. Task egaligini tekshirish
+            is_owner = await self._check_ownership(user, self.task_id)
+            if not is_owner:
+                await self.close(code=4003)
+                return
 
-        # 3. Task egaligini tekshiramiz
-        is_owner = await self._check_ownership(user, self.task_id)
-        if not is_owner:
-            print(f"⚠️ WS Error: Task ({self.task_id}) user ({user}) ga tegishli emas")
-            await self.close(code=4003)
-            return
+            # 4. AVAL ulanishni qabul qilamiz (Handshake muvaffaqiyatli bo'lishi uchun)
+            await self.accept()
 
-        # 4. Ulanishni qabul qilamiz va guruhga qo'shamiz
-        self.room_group_name = f'scan_{self.task_id}'
-        await self.channel_layer.group_add(
-            self.room_group_name,
-            self.channel_name
-        )
-        await self.accept()
-        print(f"✅ WS Success: User {user.username} WebSocket-ga ulandi!")
+            # 5. KEYIN Redis guruhiga qo'shamiz
+            self.room_group_name = f'scan_{self.task_id}'
+            await self.channel_layer.group_add(
+                self.room_group_name,
+                self.channel_name
+            )
 
+            user_identity = getattr(user, 'username', getattr(user, 'phone_number', getattr(user, 'email', str(user.pk))))
+            print(f"✅ WS Success: User {user_identity} WebSocket-ga ulandi!")
+
+        except Exception as e:
+            print(f"❌ WS Connect Error: {e}")
+            await self.close(code=1011)
     @database_sync_to_async
     def _get_user_from_token(self, token_key):
         """JWT Access Tokendan User-ni aniqlash"""

@@ -206,9 +206,10 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("redis", 6379)],  # docker-compose'dagi redis servisi
-            "capacity": 1500,            # Bitta kanal (channel) kutishi mumkin bo'lgan maksimal xabarlar soni
-            "expiry": 10,                # Xabarlarning Redis'da saqlanish vaqti (soniya)
+            "hosts": [("redis", 6379)],
+            "capacity": 1500,
+            "expiry": 10,
+            # ⬇️ Connection Timeout xatosini oldini oluvchi muhim parametrlar:
             "channel_capacity": {
                 "http.request": 200,
             },
