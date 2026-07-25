@@ -613,7 +613,7 @@ class Scan(APIView):
                 "error": f"Skanerlash jarayonida xato yuz berdi: {str(e)}"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
+@extend_schema(tags=["web/scan-history"])
 class ScanHistoryLIstView(ListAPIView):
     permission_classes = [IsAuthenticated] 
     serializer_class = ScanHistorySerializer
