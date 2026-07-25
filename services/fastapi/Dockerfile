@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -7,34 +7,40 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 WORKDIR /app
 
-# Skanerlash va tizim vositalarini o'rnatish
+# 1. Tizim paketlari va zaruriy utilitalarni o'rnatish
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     sqlmap \
-    nikto \
-    dirb \
     wget \
     curl \
     unzip \
     git \
+    perl \
+    libnet-ssleay-perl \
     ca-certificates \
     build-essential \
     libpq-dev \
  && rm -rf /var/lib/apt/lists/*
 
-# Nuclei binarini o'rnatish
-RUN curl -sL https://github.com/projectdiscovery/nuclei/releases/download/v3.3.7/nuclei_3.3.7_linux_amd64.zip -o /tmp/nuclei.zip \
+# 2. Nikto'ni GitHub'dan o'rnatish va tizimga symlink qilish
+RUN git clone --depth=1 https://github.com/sullo/nikto.git /opt/nikto \
+ && ln -s /opt/nikto/program/nikto.pl /usr/local/bin/nikto \
+ && chmod +x /usr/local/bin/nikto
+
+# 3. Nuclei binarini yuklab olish va o'rnatish (Har doim barqaror va eng so'nggi)
+RUN NUCLEI_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/') \
+ && curl -sL "https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_amd64.zip" -o /tmp/nuclei.zip \
  && unzip /tmp/nuclei.zip -d /usr/local/bin nuclei \
  && chmod +x /usr/local/bin/nuclei \
  && rm /tmp/nuclei.zip
 
-# Aniq ko'rsatilgan yo'l bo'yicha requirements o'rnatish
+# 4. Requirements o'rnatish
 COPY services/fastapi/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Butun loyiha kodini ko'chirish
+# 5. Loyiha kodini ko'chirish
 COPY . .
 
-# Worker'ni ishga tushirish (agar faylingiz services/fastapi/main.py bo'lsa)
+# 6. Worker'ni ishga tushirish
 CMD ["python", "services/fastapi/main.py"]
