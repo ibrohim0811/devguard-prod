@@ -370,7 +370,7 @@ def checkwebtoken(request, slug):
     }, status=status.HTTP_405_METHOD_NOT_ALLOWED)       
                     
 
-@extend_schema(tags=["webapp/payment"], request=CheckPaymentSerializer)
+@extend_schema(tags=["webapp/payment"], request=CheckPaymentSerializer, responses={200: CheckPaymentSerializer})
 class CheckWebappPayment(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -438,7 +438,7 @@ def get_rabbitmq_connection():
     return pika.BlockingConnection(parameters)
 
 
-@extend_schema(tags=["web/scan"], request=StartScanSerializer)
+@extend_schema(tags=["web/scan"], request=StartScanSerializer, responses={202: StartScanSerializer})
 class FullScanView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -542,7 +542,7 @@ class FullScanView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@extend_schema(tags=["web/scan"], request=StartScanSerializer)
+@extend_schema(tags=["web/scan"], request=StartScanSerializer, responses={202: StartScanSerializer})
 class Scan(APIView):
     permission_classes = [IsAuthenticated]
 
