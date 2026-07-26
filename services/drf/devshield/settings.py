@@ -212,6 +212,7 @@ CHANNEL_LAYERS = {
                     "address": "redis://redis:6379/0",
                     "health_check_interval": 15, # Har 15 soniyada Redis bilan ulanishni tekshiradi
                     "socket_connect_timeout": 5, # Ulanish kutish vaqti
+                    "socket_timeout": None,      # redis-py 8.x+ default 5s socket_timeout xatosini bartaraf etish uchun
                     "socket_keepalive": True,    # TCP Keepalive yoqish
                 },
             ],
