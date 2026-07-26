@@ -235,6 +235,7 @@ class WebApplicationsDetailView(RetrieveAPIView):
 class WebApplicationDeleteBySlugAPIView(DestroyAPIView):
     permission_classes = [IsAuthenticated]
     lookup_field = 'slug' 
+    serializer_class = None
 
     def get_queryset(self):
         return WebApplications.objects.filter(user=self.request.user)
@@ -272,7 +273,7 @@ class TransactionDetailAPIView(RetrieveAPIView):
     
 
 
-@extend_schema(tags=['services/check'])
+@extend_schema(tags=['services/check'], responses=200)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, ])
 def checkwebtoken(request, slug):
