@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
 
   # ─────────────────────────────────────────
@@ -26,7 +28,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: devshield_redis
-    command: redis-server --appendonly yes
+    # Redis Timeout berib qo'ymasligi uchun keepalive parametrlarini qo'shamiz
+    command: redis-server --appendonly yes --tcp-keepalive 60
     volumes:
       - redis_data:/data
     networks:
@@ -67,6 +70,8 @@ services:
       context: .
       dockerfile: services/drf/Dockerfile
     container_name: devshield_django
+    # Gunicorn worker temp papkasini /tmp ga o'tkazish Permission Denied xatosini bartaraf etadi
+    command: gunicorn devshield.wsgi:application --bind 0.0.0.0:8000 --workers 3 --worker-tmp-dir /tmp
     env_file: .env
     volumes:
       - static_files:/app/staticfiles
@@ -88,7 +93,7 @@ services:
       retries: 3
       start_period: 15s
 
-  # WebSocket requests must never reach the WSGI/Gunicorn service above.
+  # WebSocket (Channels / Daphne) xizmati
   django_asgi:
     build:
       context: .
@@ -169,6 +174,7 @@ services:
     container_name: devshield_nginx
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - static_files:/app/staticfiles:ro
       - media_files:/app/media:ro
@@ -181,26 +187,16 @@ services:
       - devshield_network
     restart: unless-stopped
 
-
 # ─────────────────────────────────────────
-#   Named Volumes
-# ─────────────────────────────────────────
-volumes:
-  postgres_data:
-    driver: local
-  redis_data:
-    driver: local
-  rabbitmq_data:
-    driver: local
-  static_files:
-    driver: local
-  media_files:
-    driver: local
-
-
-# ─────────────────────────────────────────
-#   Networks
+#   Networks & Volumes
 # ─────────────────────────────────────────
 networks:
   devshield_network:
     driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  static_files:
+  media_files:

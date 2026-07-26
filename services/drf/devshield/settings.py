@@ -206,10 +206,19 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("redis", 6379)],
+            "hosts": [
+                {
+                    "address": ("redis", 6379),
+                    # Timeout ko'rsatkichlarini oshiramiz
+                    "socket_timeout": 30,
+                    "socket_connect_timeout": 30,
+                    "health_check_interval": 10,
+                }
+            ],
             "capacity": 1500,
-            "expiry": 10,
-            "symmetric_encryption_keys": [],
+            "expiry": 60,
+            # Redis PUB/SUB aloqasi o'lib qolmasligi uchun taym-autni oshiramiz:
+            "symmetric_encryption_keys": None, # agar shifrlash ishlatilmasa
         },
     },
 }
