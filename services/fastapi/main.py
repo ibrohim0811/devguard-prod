@@ -21,47 +21,24 @@ app = FastAPI()
 # Docker da REDIS_HOST=redis, local da 127.0.0.1
 _redis_host = os.getenv("REDIS_HOST", "127.0.0.1")
 _redis_port = int(os.getenv("REDIS_PORT", 6379))
-
-# Django tomonidagi (settings.py -> CHANNEL_LAYERS) sozlamalar bilan bir xil:
-# socket_connect_timeout bo'lmasa, Redis javob bermay qolganda ulanish
-# cheksiz kutib qolishi mumkin edi.
-_redis_group_send_timeout = float(os.getenv("REDIS_GROUP_SEND_TIMEOUT", 5))
 channel_layer = RedisChannelLayer(
-    hosts=[
-        {
-            "address": f"redis://{_redis_host}:{_redis_port}/0",
-            "socket_connect_timeout": 5,   # Ulanishga urinish uchun max kutish vaqti
-            "socket_keepalive": True,      # TCP Keepalive
-            "health_check_interval": 15,   # Har 15s Redis bilan aloqa tekshiriladi
-        },
-    ],
+    hosts=[f"redis://{_redis_host}:{_redis_port}/0"],
 )
 
 async def send_status_to_django(task_id: str, payload: dict):
     """Django Channels'ning Redis guruhiga real-time status yuborish"""
     if not task_id:
         return
-
+    
     # ``group_send`` is required: publishing to ``asgi:group:*`` does not
     # implement the Channels Redis group protocol and drops the event.
-    try:
-        await asyncio.wait_for(
-            channel_layer.group_send(
-                f"scan_{task_id}",
-                {
-                    "type": "scan_status_update",
-                    "message": payload,
-                },
-            ),
-            timeout=_redis_group_send_timeout,
-        )
-    except asyncio.TimeoutError:
-        # Redis javob bermayapti - bu status-yangilanish shunchaki o'tkazib
-        # yuboriladi, lekin worker skanerlashni davom ettiraveradi
-        # (update_scan_history_in_db orqali Postgres'ga fallback saqlanadi).
-        print(f"⏱️ Redis timeout: group_send({task_id}) {_redis_group_send_timeout}s ichida javob bermadi.")
-    except Exception as e:
-        print(f"⚠️ Redis group_send xatosi ({task_id}): {e}")
+    await channel_layer.group_send(
+        f"scan_{task_id}",
+        {
+            "type": "scan_status_update",
+            "message": payload,
+        },
+    )
 
 
 # ------------------------------------
