@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 # Resend API kalitini sozlaymiz
 resend.api_key = os.getenv("RESEND_API_KEY")
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates", "emails")
+
 # Jinja2 muhitini bir marta yuklab olamiz
 env = Environment(loader=FileSystemLoader("templates/emails"))
 template = env.get_template("otp_email.html")
