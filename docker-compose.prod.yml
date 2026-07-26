@@ -30,7 +30,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: devshield_redis
-    # --timeout 0 va --tcp-keepalive 60 qo'shildi!
     command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru --timeout 0 --tcp-keepalive 60
     volumes:
       - redis_data:/data
@@ -66,11 +65,9 @@ services:
   #   Application
   # ─────────────────────────────────────────
 
-  # HTTP requests are served by WSGI/Gunicorn.
   django:
     image: ghcr.io/ibrohim0811/devshield-django:latest
     container_name: devshield_django
-    # The entrypoint applies migrations, collects static files, then starts Gunicorn.
     env_file: .env
     volumes:
       - static_files:/app/staticfiles
@@ -86,17 +83,16 @@ services:
       - devshield_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/api/schema/\")' || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "python -c 'import socket; s = socket.socket(); s.connect((\"127.0.0.1\", 8000))' || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 45s
     deploy:
       resources:
         limits:
           memory: 1G
 
-  # A separate ASGI process guarantees that /ws/ never reaches Gunicorn.
   django_asgi:
     image: ghcr.io/ibrohim0811/devshield-django:latest
     container_name: devshield_django_asgi
@@ -111,11 +107,11 @@ services:
       - devshield_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/api/schema/\")' || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "python -c 'import socket; s = socket.socket(); s.connect((\"127.0.0.1\", 8000))' || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 45s
     deploy:
       resources:
         limits:
