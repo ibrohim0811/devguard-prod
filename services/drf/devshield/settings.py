@@ -208,14 +208,18 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
             "hosts": [
-                "redis://redis:6379/0",  # Tuple ('redis', 6379) EMAS, aynan URL bo'lishi kerak!
+                {
+                    "address": "redis://redis:6379/0",
+                    "health_check_interval": 15, # Har 15 soniyada Redis bilan ulanishni tekshiradi
+                    "socket_connect_timeout": 5, # Ulanish kutish vaqti
+                    "socket_keepalive": True,    # TCP Keepalive yoqish
+                },
             ],
             "capacity": 1500,
             "expiry": 60,
         },
     },
 }
-
 
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND")
 EMAIL_HOST = os.getenv("EMAIL_HOST")
