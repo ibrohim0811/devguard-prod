@@ -52,7 +52,8 @@ class ScanProgressConsumer(AsyncWebsocketConsumer):
 
         except Exception as e:
             print(f"❌ WS Connect Error: {e}")
-            await self.close(code=1011)
+            # Invalid close code 1011 o'rniga 4000 (Custom Error) beriladi
+            await self.close(code=4000)
 
     async def receive(self, text_data=None, bytes_data=None):
         """Frontend tomondan kelgan ping/keep-alive xabarlarini qayta ishlash"""
@@ -76,10 +77,13 @@ class ScanProgressConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, close_code):
         if hasattr(self, 'room_group_name'):
-            await self.channel_layer.group_discard(
-                self.room_group_name,
-                self.channel_name
-            )
+            try:
+                await self.channel_layer.group_discard(
+                    self.room_group_name,
+                    self.channel_name
+                )
+            except Exception as e:
+                print(f"⚠️ WS Disconnect Group Error: {e}")
 
     async def scan_status_update(self, event):
         message = event['message']

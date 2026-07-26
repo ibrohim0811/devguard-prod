@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
  && rm -rf /var/lib/apt/lists/*
 
-# Pip upgrade + requirements.txt (Aniq yo'l ko'rsatilgan)
+# Pip upgrade + requirements.txt
 COPY services/drf/requirements.txt ./requirements.txt
 RUN pip install --upgrade pip \
  && pip install --no-cache-dir --prefix=/install -r requirements.txt
@@ -41,15 +41,16 @@ COPY --from=builder /install /usr/local
 # Loyihaning barcha fayllarini ko'chirish
 COPY . .
 
-# Static va media papkalari
-RUN mkdir -p /app/staticfiles /app/media
+# Static, media va appuser uy papkalarini yaratish
+RUN mkdir -p /app/staticfiles /app/media /home/appuser
 
 # entrypoint.sh ga ijro huquqini berish
 RUN chmod +x /app/services/drf/entrypoint.sh
 
-# Non-root user yaratish va ruxsatlarni berish
-RUN useradd --no-create-home --shell /bin/false appuser \
- && chown -R appuser:appuser /app
+# Non-root user yaratish va barcha ruxsatlarni bir martada berish
+RUN useradd -m -d /home/appuser --shell /bin/false appuser \
+ && chown -R appuser:appuser /app /home/appuser
+
 USER appuser
 
 EXPOSE 8000

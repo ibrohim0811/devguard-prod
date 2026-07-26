@@ -202,23 +202,16 @@ SPECTACULAR_SETTINGS = {
     # OTHER SETTINGS
 }
 
+# settings.py
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
             "hosts": [
-                {
-                    "address": ("redis", 6379),
-                    # Timeout ko'rsatkichlarini oshiramiz
-                    "socket_timeout": 30,
-                    "socket_connect_timeout": 30,
-                    "health_check_interval": 10,
-                }
+                "redis://redis:6379/0",  # Tuple ('redis', 6379) EMAS, aynan URL bo'lishi kerak!
             ],
             "capacity": 1500,
             "expiry": 60,
-            # Redis PUB/SUB aloqasi o'lib qolmasligi uchun taym-autni oshiramiz:
-            "symmetric_encryption_keys": None, # agar shifrlash ishlatilmasa
         },
     },
 }
