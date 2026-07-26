@@ -30,7 +30,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: devshield_redis
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # --timeout 0 va --tcp-keepalive 60 qo'shildi!
+    command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru --timeout 0 --tcp-keepalive 60
     volumes:
       - redis_data:/data
     networks:
