@@ -565,7 +565,7 @@ class FullScanView(APIView):
                     "error": f"Skanerlash xizmatiga ulanib bo'lmadi: {str(e)}"
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            print(e)
+            print(e, flush=True)
             return Response({"message":"Server Xatoligi"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -697,7 +697,7 @@ class Scan(APIView):
                     "error": "Skanerlash jarayonida xatolik yuz berdi. Iltimos keyinroq qayta urinib ko'ring."
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            print(e)
+            print(e, flush=True)
             return Response({"message":"Server Xatoligi"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
