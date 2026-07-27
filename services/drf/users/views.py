@@ -375,13 +375,12 @@ def checkwebtoken(request, slug):
 class CheckWebappPayment(APIView):
     permission_classes = [IsAuthenticated]
 
-    
     def post(self, request):
-        
         serializer = CheckPaymentSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        slug = slug = serializer.validated_data['webapp_slug']
+        
+        slug = serializer.validated_data['webapp_slug']
         user = request.user
         
         try:
@@ -389,37 +388,41 @@ class CheckWebappPayment(APIView):
         except WebApplications.DoesNotExist:
             return Response({"error": "Sayt topilmadi!"}, status=status.HTTP_404_NOT_FOUND)
         
-        if webapp.is_verified:
-
-            last_scan = ScanHistory.objects.filter(webapp=webapp).order_by('-scanned_at').first()
-
-            if last_scan and last_scan.scanned_at:
-                vaqt_farqi = timezone.now() - last_scan.scanned_at
-                if vaqt_farqi > timedelta(days=2):
-                    return Response({
-                        "access": False,
-                        "message": "Oxirgi skanerdan 2 kun o'tdi. Qayta skanerlash uchun to'lov qiling."
-                }, status=status.HTTP_402_PAYMENT_REQUIRED)
-
-            transaction = TransactionHistory.objects.create(
-                webapp=webapp,
-                user=user,
-                amount=20000.00,
-                status=TransactionHistory.StatusChoices.PENDING
-            )
-
-            
-            deeplink = f"https://t.me/{os.getenv("BOT_USERNAME")}?start={transaction.payment_id}"
-
+        # 1. Verifikatsiyani tekshiramiz
+        if not webapp.is_verified:
             return Response({
                 "access": False,
-                "message": "Skanerlash muddati tugagan. Iltimos to'lov qiling.",
-                "deeplink": deeplink
-            }, status=status.HTTP_402_PAYMENT_REQUIRED)
+                "message": "Vebsaytingiz tasdiqdan o'tmagan."
+            }, status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # 2. Oxirgi skanerlash vaqtini tekshiramiz
+        last_scan = ScanHistory.objects.filter(webapp=webapp).order_by('-scanned_at').first()
+
+        # Agar oldin skan qilingan bo'lsa va undan 2 kun o'tmagan bo'lsa -> RUXSAT
+        if last_scan and last_scan.scanned_at:
+            vaqt_farqi = timezone.now() - last_scan.scanned_at
+            if vaqt_farqi <= timedelta(days=2):
+                return Response({
+                    "access": True,
+                    "message": "Skanerlash uchun ruxsat berildi."
+                }, status=status.HTTP_200_OK)
+
+        # 3. Aks holda (2 kundan ko'p o'tgan yoki umuman skan qilinmagan bo'lsa) -> TO'LOV TALAB QILINADI
+        transaction = TransactionHistory.objects.create(
+            webapp=webapp,
+            user=user,
+            amount=20000.00,
+            status=TransactionHistory.StatusChoices.PENDING
+        )
+
+        bot_username = os.getenv("BOT_USERNAME", "DevGuardBot")
+        deeplink = f"https://t.me/{bot_username}?start={transaction.payment_id}"
+
         return Response({
-            "access":False,
-            "message":"Vebsaytingiz tasdiqdan o'tmagan"
-        }, status=status.HTTP_406_NOT_ACCEPTABLE)
+            "access": False,
+            "message": "Skanerlash muddati tugagan. Qayta skanerlash uchun to'lov qiling.",
+            "deeplink": deeplink
+        }, status=status.HTTP_402_PAYMENT_REQUIRED)
 
 
 def get_rabbitmq_connection():
@@ -473,10 +476,22 @@ class FullScanView(APIView):
         if last_scan and last_scan.scanned_at:
             vaqt_farqi = timezone.now() - last_scan.scanned_at
             if vaqt_farqi > timedelta(days=2):
+                transaction = TransactionHistory.objects.create(
+                    webapp=web,
+                    user=self.request.user,
+                    amount=20000.00,
+                    status=TransactionHistory.StatusChoices.PENDING
+                )
+                
+                bot_username = os.getenv("BOT_USERNAME", "DevGuardBot")
+                deeplink = f"https://t.me/{bot_username}?start={transaction.payment_id}"
+                
                 return Response({
                     "access": False,
-                    "message": "Oxirgi skanerdan 2 kun o'tdi. Qayta skanerlash uchun to'lov qiling."
+                    "message": "Skanerlash muddati tugagan. Qayta skanerlash uchun to'lov qiling.",
+                    "deeplink": deeplink
                 }, status=status.HTTP_402_PAYMENT_REQUIRED)
+                
 
         # Base yozuv ochish
         scan_record, created = ScanHistory.objects.get_or_create(
@@ -578,9 +593,20 @@ class Scan(APIView):
         if last_scan and last_scan.scanned_at:
             vaqt_farqi = timezone.now() - last_scan.scanned_at
             if vaqt_farqi > timedelta(days=2):
+                transaction = TransactionHistory.objects.create(
+                    webapp=web,
+                    user=self.request.user,
+                    amount=20000.00,
+                    status=TransactionHistory.StatusChoices.PENDING
+                )
+                
+                bot_username = os.getenv("BOT_USERNAME", "DevGuardBot")
+                deeplink = f"https://t.me/{bot_username}?start={transaction.payment_id}"
+                
                 return Response({
                     "access": False,
-                    "message": "Oxirgi skanerdan 2 kun o'tdi. Qayta skanerlash uchun to'lov qiling."
+                    "message": "Skanerlash muddati tugagan. Qayta skanerlash uchun to'lov qiling.",
+                    "deeplink": deeplink
                 }, status=status.HTTP_402_PAYMENT_REQUIRED)
 
         scan_record, created = ScanHistory.objects.get_or_create(
