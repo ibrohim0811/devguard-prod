@@ -514,7 +514,6 @@ class FullScanView(APIView):
         # ✅ get_or_create O'RNIGA .create() ISHLATAMIZ:
         scan_record = ScanHistory.objects.create(
             webapp=web,
-            user=request.user,  # Agar modelda user field bo'lsa
             task_id=corr_id,
             result_summary="Chuqur skanerlash navbatda...",
             scan_type=ScanHistory.TypeChoices.FULL_SCAN,
@@ -566,23 +565,7 @@ class FullScanView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         
-import os
-import json
-import uuid
-import logging
-import pika
-from datetime import timedelta
 
-from django.utils import timezone
-from django.shortcuts import get_object_or_404
-from rest_framework import status
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework.generics import ListAPIView
-from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import extend_schema
-
-logger = logging.getLogger(__name__)
 
 
 @extend_schema(tags=["web/scan"], request=StartScanSerializer, responses={202: StartScanSerializer})
@@ -661,7 +644,6 @@ class Scan(APIView):
         # Har bir skan uchun yangi yozuv yaratamiz
         scan_record = ScanHistory.objects.create(
             webapp=web,
-            user=request.user,
             task_id=corr_id,
             result_summary="Skanerlash navbatda...",
             scan_type=ScanHistory.TypeChoices.DDOS,
