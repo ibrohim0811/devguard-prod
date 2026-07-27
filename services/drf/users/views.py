@@ -486,7 +486,7 @@ class FullScanView(APIView):
                     status=TransactionHistory.StatusChoices.SUCCESS
                 )
                 if last_scan and last_scan.scanned_at:
-                    payment_query = payment_query.filter(created_at__gt=last_scan.scanned_at)
+                    payment_query = payment_query.filter(payment_date__gt=last_scan.scanned_at)
     
                 has_valid_payment = payment_query.exists()
     
@@ -618,7 +618,7 @@ class Scan(APIView):
                     status=TransactionHistory.StatusChoices.SUCCESS
                 )
                 if last_scan and last_scan.scanned_at:
-                    payment_query = payment_query.filter(created_at__gt=last_scan.scanned_at)
+                    payment_query = payment_query.filter(payment_date__gt=last_scan.scanned_at)
     
                 has_valid_payment = payment_query.exists()
     
