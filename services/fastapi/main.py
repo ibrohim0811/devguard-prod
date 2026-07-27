@@ -117,7 +117,7 @@ async def process_scan_task(message: aio_pika.IncomingMessage):
                 "message": "Chuqur audit skanerlash boshlandi..."
             })
             
-            script_path = "./scripts/audit.sh" 
+            script_path = "/app/services/fastapi/scripts/audit.sh"
             process = await asyncio.create_subprocess_exec(
                 script_path, domain,
                 stdout=asyncio.subprocess.PIPE,
@@ -206,7 +206,7 @@ async def scan(message: aio_pika.IncomingMessage):
                 "message": "Standart skanerlash boshlandi..."
             })
             
-            script_path = "./scripts/scan.sh" 
+            script_path = "/app/services/fastapi/scripts/scan.sh"
             process = await asyncio.create_subprocess_exec(
                 script_path, domain,
                 stdout=asyncio.subprocess.PIPE,
