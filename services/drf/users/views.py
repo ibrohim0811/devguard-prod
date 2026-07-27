@@ -465,24 +465,20 @@ class FullScanView(APIView):
             return Response({"error": f"Skanerlash rad etildi: {safe_err}"}, status=status.HTTP_400_BAD_REQUEST)
 
         # -------------------------------------------------------------
-        # 🟢 TO'LOV VA VAQT CHEKLOVINI TO'G'RI TEKSHIRISH
+        # 🟢 TO'LOV VA VAQT CHEKLOVI
         # -------------------------------------------------------------
         last_scan = ScanHistory.objects.filter(webapp=web).order_by('-scanned_at').first()
         
         needs_payment = False
         
         if not last_scan or not last_scan.scanned_at:
-            # Umuman skan qilinmagan bo'lsa -> To'lov kerak
             needs_payment = True
         else:
             vaqt_farqi = timezone.now() - last_scan.scanned_at
             if vaqt_farqi > timedelta(days=2):
-                # 2 kundan ko'p vaqt o'tgan bo'lsa -> To'lov kerak
                 needs_payment = True
 
-        # Agar to'lov talab qilinsa, bot orqali MUVAFFAQIYATLI (SUCCESS) to'lov qilinganini tekshiramiz
         if needs_payment:
-            # Oxirgi skanerdan KEYIN qilingan SUCCESS to'lov bormi?
             payment_query = TransactionHistory.objects.filter(
                 webapp=web, 
                 user=request.user, 
@@ -494,7 +490,6 @@ class FullScanView(APIView):
             has_valid_payment = payment_query.exists()
 
             if not has_valid_payment:
-                # To'lov qilinmagan bo'lsa, PENDING tranzaksiya yaratamiz/olamiz
                 transaction, _ = TransactionHistory.objects.get_or_create(
                     webapp=web,
                     user=self.request.user,
@@ -512,16 +507,19 @@ class FullScanView(APIView):
                 }, status=status.HTTP_402_PAYMENT_REQUIRED)
 
         # -------------------------------------------------------------
-        # 🚀 SKANERLASHNI NAVBATGA QO'SHISH (RABBITMQ)
+        # 🚀 SKANERLASH YAZUVINI YARATISH VA RABBITMQ GA YUBORISH
         # -------------------------------------------------------------
-        scan_record, created = ScanHistory.objects.get_or_create(
+        corr_id = str(uuid.uuid4())
+
+        # ✅ get_or_create O'RNIGA .create() ISHLATAMIZ:
+        scan_record = ScanHistory.objects.create(
             webapp=web,
+            user=request.user,  # Agar modelda user field bo'lsa
+            task_id=corr_id,
             result_summary="Chuqur skanerlash navbatda...",
-            scan_type=ScanHistory.TypeChoices.FULL_SCAN
+            scan_type=ScanHistory.TypeChoices.FULL_SCAN,
+            scanned_at=timezone.now()
         )
-        if not created:
-            scan_record.result_summary = "Chuqur skanerlash navbatda..."
-            scan_record.save()
 
         try:
             conn = get_rabbitmq_connection()
@@ -529,10 +527,6 @@ class FullScanView(APIView):
 
             queue_name = "fullscan"
             channel.queue_declare(queue=queue_name, durable=True)
-
-            corr_id = str(uuid.uuid4())
-            scan_record.task_id = corr_id
-            scan_record.save(update_fields=['task_id'])
 
             payload = {
                 "task_id": corr_id, 
@@ -565,11 +559,32 @@ class FullScanView(APIView):
 
         except Exception as e:
             logger.error(f"FullScan RabbitMQ xatoligi: {e}")
+            # Agar RabbitMQ ga ulanishda xato bo'lsa, yaratilgan scan_record ni o'chirib tashlaymiz
+            scan_record.delete()
             return Response({
-                "error": "Skanerlash jarayonida xatolik yuz berdi. Iltimos keyinroq qayta urinib ko'ring."
+                "error": f"Skanerlash xizmatiga ulanib bo'lmadi: {str(e)}"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         
+import os
+import json
+import uuid
+import logging
+import pika
+from datetime import timedelta
+
+from django.utils import timezone
+from django.shortcuts import get_object_or_404
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated
+from drf_spectacular.utils import extend_schema
+
+logger = logging.getLogger(__name__)
+
+
 @extend_schema(tags=["web/scan"], request=StartScanSerializer, responses={202: StartScanSerializer})
 class Scan(APIView):
     permission_classes = [IsAuthenticated]
@@ -584,25 +599,17 @@ class Scan(APIView):
         web = WebApplications.objects.filter(user=request.user, slug=slug).first()
         if not web:
             return Response({"error": "Bunday Vebsayt mavjud emas!"}, status=status.HTTP_404_NOT_FOUND)
-            
-        has_successful_payment = TransactionHistory.objects.filter(
-            webapp=web, 
-            user=request.user, 
-            status=TransactionHistory.StatusChoices.SUCCESS
-        ).exists()
-        if not has_successful_payment:
-            return Response({"error": "To'lov tasdiqlanmagan!"}, status=status.HTTP_402_PAYMENT_REQUIRED)
              
         if not web.is_verified:
-            return Response({"message": "Vebsaytingiz hali tekshirilmagan!"}, status=status.HTTP_466_NOT_ACCEPTABLE)
+            return Response({"message": "Vebsaytingiz hali tekshirilmagan!"}, status=status.HTTP_406_NOT_ACCEPTABLE)
 
         is_safe, safe_err = validate_safe_url_or_domain(web.domain)
         if not is_safe:
             return Response({"error": f"Skanerlash rad etildi: {safe_err}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        #-----------------------#
-        #        PAYMENT        #
-        #-----------------------#
+        # -------------------------------------------------------------
+        # 🟢 TO'LOV VA VAQT CHEKLOVI TEKSHIRUVI
+        # -------------------------------------------------------------
         last_scan = ScanHistory.objects.filter(webapp=web).order_by('-scanned_at').first()
                 
         needs_payment = False
@@ -616,7 +623,6 @@ class Scan(APIView):
                 # 2 kundan ko'p vaqt o'tgan bo'lsa -> To'lov kerak
                 needs_payment = True
 
-        # Agar to'lov talab qilinsa, bot orqali MUVAFFAQIYATLI (SUCCESS) to'lov qilinganini tekshiramiz
         if needs_payment:
             # Oxirgi skanerdan KEYIN qilingan SUCCESS to'lov bormi?
             payment_query = TransactionHistory.objects.filter(
@@ -647,15 +653,20 @@ class Scan(APIView):
                     "deeplink": deeplink
                 }, status=status.HTTP_402_PAYMENT_REQUIRED)
 
-        #RABBIT
-        scan_record, created = ScanHistory.objects.get_or_create(
+        # -------------------------------------------------------------
+        # 🚀 SKANERLASH YAZUVINI YARATISH VA RABBITMQ GA YUBORISH
+        # -------------------------------------------------------------
+        corr_id = str(uuid.uuid4())
+
+        # Har bir skan uchun yangi yozuv yaratamiz
+        scan_record = ScanHistory.objects.create(
             webapp=web,
-            result_summary="Chuqur skanerlash navbatda...",
-            scan_type=ScanHistory.TypeChoices.DDOS
+            user=request.user,
+            task_id=corr_id,
+            result_summary="Skanerlash navbatda...",
+            scan_type=ScanHistory.TypeChoices.DDOS,
+            scanned_at=timezone.now()
         )
-        if not created:
-            scan_record.result_summary = "Skanerlash navbatda..."
-            scan_record.save()
 
         try:
             conn = get_rabbitmq_connection()
@@ -663,15 +674,6 @@ class Scan(APIView):
 
             queue_name = "scan"
             channel.queue_declare(queue=queue_name, durable=True)
-
-            # 🔥 FIRE AND FORGET: task_id = corr_id sifatida ishlatiladi
-            # WebSocket consumer shu task_id orqali qaysi scan yozuvini
-            # yangilashni biladi (scan_record ga ham saqlaymiz)
-            corr_id = str(uuid.uuid4())
-
-            # task_id ni scan_record ga bog'laymiz
-            scan_record.task_id = corr_id
-            scan_record.save(update_fields=['task_id'])
 
             payload = {
                 "task_id": corr_id,
@@ -694,10 +696,7 @@ class Scan(APIView):
 
             logger.info(f"✅ Scan navbatga qo'shildi: task_id={corr_id}, slug={slug}")
 
-            # ✅ Darhol javob qaytaramiz — HTTP so'rov bloklanmaydi!
-            # Front-end WebSocket ws://host/ws/scan/{task_id}/ ga ulanib
-            # real-time xabarlarni qabul qiladi.
-            host = request.get_host()  # 'api.devguard.uz' yoki 'localhost:8000'
+            host = request.get_host()
             scheme = "wss" if request.is_secure() else "ws"
             return Response({
                 "message": "Skanerlash navbatga qo'shildi. WebSocket orqali natijani kuting.",
@@ -707,10 +706,10 @@ class Scan(APIView):
 
         except Exception as e:
             logger.error(f"Scan RabbitMQ xatoligi: {e}")
+            scan_record.delete()  # Navbatga qo'shilmay qolsa bazadagi yozuvni o'chiramiz
             return Response({
                 "error": "Skanerlash jarayonida xatolik yuz berdi. Iltimos keyinroq qayta urinib ko'ring."
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 
 @extend_schema(tags=["user/webapps"])
@@ -721,8 +720,5 @@ class ScanHistoryLIstView(ListAPIView):
 
     def get_queryset(self):
         slug = self.kwargs.get(self.lookup_field)
-
         web = get_object_or_404(WebApplications, slug=slug, user=self.request.user)
         return ScanHistory.objects.filter(webapp=web).order_by('-scanned_at')
-    
-        
