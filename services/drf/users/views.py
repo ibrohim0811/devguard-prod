@@ -408,11 +408,11 @@ class CheckWebappPayment(APIView):
                 }, status=status.HTTP_200_OK)
 
         # 3. Aks holda (2 kundan ko'p o'tgan yoki umuman skan qilinmagan bo'lsa) -> TO'LOV TALAB QILINADI
-        transaction = TransactionHistory.objects.create(
+        transaction, _ = TransactionHistory.objects.get_or_create(
             webapp=webapp,
             user=user,
-            amount=20000.00,
-            status=TransactionHistory.StatusChoices.PENDING
+            status=TransactionHistory.StatusChoices.PENDING,
+            defaults={'amount': 20000.00}
         )
 
         bot_username = os.getenv("BOT_USERNAME", "DevGuardBot")
@@ -457,30 +457,49 @@ class FullScanView(APIView):
         if not web:
             return Response({"error": "Bunday Vebsayt mavjud emas!"}, status=status.HTTP_404_NOT_FOUND)
             
-        has_successful_payment = TransactionHistory.objects.filter(
-            webapp=web, 
-            user=request.user, 
-            status=TransactionHistory.StatusChoices.SUCCESS
-        ).exists()
-        if not has_successful_payment:
-            return Response({"error": "To'lov tasdiqlanmagan!"}, status=status.HTTP_402_PAYMENT_REQUIRED)
         if not web.is_verified:
-            return Response({"message": "Vebsaytingiz hali tekshirilmagan!"}, status=status.HTTP_466_NOT_ACCEPTABLE)
+            return Response({"message": "Vebsaytingiz hali tekshirilmagan!"}, status=status.HTTP_406_NOT_ACCEPTABLE)
 
         is_safe, safe_err = validate_safe_url_or_domain(web.domain)
         if not is_safe:
             return Response({"error": f"Skanerlash rad etildi: {safe_err}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Vaqt cheklovini tekshirish
+        # -------------------------------------------------------------
+        # 🟢 TO'LOV VA VAQT CHEKLOVINI TO'G'RI TEKSHIRISH
+        # -------------------------------------------------------------
         last_scan = ScanHistory.objects.filter(webapp=web).order_by('-scanned_at').first()
-        if last_scan and last_scan.scanned_at:
+        
+        needs_payment = False
+        
+        if not last_scan or not last_scan.scanned_at:
+            # Umuman skan qilinmagan bo'lsa -> To'lov kerak
+            needs_payment = True
+        else:
             vaqt_farqi = timezone.now() - last_scan.scanned_at
             if vaqt_farqi > timedelta(days=2):
-                transaction = TransactionHistory.objects.create(
+                # 2 kundan ko'p vaqt o'tgan bo'lsa -> To'lov kerak
+                needs_payment = True
+
+        # Agar to'lov talab qilinsa, bot orqali MUVAFFAQIYATLI (SUCCESS) to'lov qilinganini tekshiramiz
+        if needs_payment:
+            # Oxirgi skanerdan KEYIN qilingan SUCCESS to'lov bormi?
+            payment_query = TransactionHistory.objects.filter(
+                webapp=web, 
+                user=request.user, 
+                status=TransactionHistory.StatusChoices.SUCCESS
+            )
+            if last_scan and last_scan.scanned_at:
+                payment_query = payment_query.filter(created_at__gt=last_scan.scanned_at)
+
+            has_valid_payment = payment_query.exists()
+
+            if not has_valid_payment:
+                # To'lov qilinmagan bo'lsa, PENDING tranzaksiya yaratamiz/olamiz
+                transaction, _ = TransactionHistory.objects.get_or_create(
                     webapp=web,
                     user=self.request.user,
-                    amount=20000.00,
-                    status=TransactionHistory.StatusChoices.PENDING
+                    status=TransactionHistory.StatusChoices.PENDING,
+                    defaults={'amount': 20000.00}
                 )
                 
                 bot_username = os.getenv("BOT_USERNAME", "DevGuardBot")
@@ -491,9 +510,10 @@ class FullScanView(APIView):
                     "message": "Skanerlash muddati tugagan. Qayta skanerlash uchun to'lov qiling.",
                     "deeplink": deeplink
                 }, status=status.HTTP_402_PAYMENT_REQUIRED)
-                
 
-        # Base yozuv ochish
+        # -------------------------------------------------------------
+        # 🚀 SKANERLASHNI NAVBATGA QO'SHISH (RABBITMQ)
+        # -------------------------------------------------------------
         scan_record, created = ScanHistory.objects.get_or_create(
             webapp=web,
             result_summary="Chuqur skanerlash navbatda...",
@@ -510,12 +530,7 @@ class FullScanView(APIView):
             queue_name = "fullscan"
             channel.queue_declare(queue=queue_name, durable=True)
 
-            # 🔥 FIRE AND FORGET: task_id = corr_id sifatida ishlatiladi
-            # WebSocket consumer shu task_id orqali qaysi scan yozuvini
-            # yangilashni biladi (scan_record ga ham saqlaymiz)
             corr_id = str(uuid.uuid4())
-
-            # task_id ni scan_record ga bog'laymiz
             scan_record.task_id = corr_id
             scan_record.save(update_fields=['task_id'])
 
@@ -540,10 +555,7 @@ class FullScanView(APIView):
 
             logger.info(f"✅ Fullscan navbatga qo'shildi: task_id={corr_id}, slug={slug}")
 
-            # ✅ Darhol javob qaytaramiz — HTTP so'rov bloklanmaydi!
-            # Front-end WebSocket ws://host/ws/scan/{task_id}/ ga ulanib
-            # real-time xabarlarni qabul qiladi.
-            host = request.get_host()  # 'api.devguard.uz' yoki 'localhost:8000'
+            host = request.get_host()
             scheme = "wss" if request.is_secure() else "ws"
             return Response({
                 "message": "Chuqur skanerlash navbatga qo'shildi. WebSocket orqali natijani kuting.",
@@ -557,7 +569,7 @@ class FullScanView(APIView):
                 "error": "Skanerlash jarayonida xatolik yuz berdi. Iltimos keyinroq qayta urinib ko'ring."
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
+        
 @extend_schema(tags=["web/scan"], request=StartScanSerializer, responses={202: StartScanSerializer})
 class Scan(APIView):
     permission_classes = [IsAuthenticated]
@@ -588,16 +600,42 @@ class Scan(APIView):
         if not is_safe:
             return Response({"error": f"Skanerlash rad etildi: {safe_err}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2. Vaqt cheklovini to'g'ri tekshirish
+        #-----------------------#
+        #        PAYMENT        #
+        #-----------------------#
         last_scan = ScanHistory.objects.filter(webapp=web).order_by('-scanned_at').first()
-        if last_scan and last_scan.scanned_at:
+                
+        needs_payment = False
+        
+        if not last_scan or not last_scan.scanned_at:
+            # Umuman skan qilinmagan bo'lsa -> To'lov kerak
+            needs_payment = True
+        else:
             vaqt_farqi = timezone.now() - last_scan.scanned_at
             if vaqt_farqi > timedelta(days=2):
-                transaction = TransactionHistory.objects.create(
+                # 2 kundan ko'p vaqt o'tgan bo'lsa -> To'lov kerak
+                needs_payment = True
+
+        # Agar to'lov talab qilinsa, bot orqali MUVAFFAQIYATLI (SUCCESS) to'lov qilinganini tekshiramiz
+        if needs_payment:
+            # Oxirgi skanerdan KEYIN qilingan SUCCESS to'lov bormi?
+            payment_query = TransactionHistory.objects.filter(
+                webapp=web, 
+                user=request.user, 
+                status=TransactionHistory.StatusChoices.SUCCESS
+            )
+            if last_scan and last_scan.scanned_at:
+                payment_query = payment_query.filter(created_at__gt=last_scan.scanned_at)
+
+            has_valid_payment = payment_query.exists()
+
+            if not has_valid_payment:
+                # To'lov qilinmagan bo'lsa, PENDING tranzaksiya yaratamiz/olamiz
+                transaction, _ = TransactionHistory.objects.get_or_create(
                     webapp=web,
                     user=self.request.user,
-                    amount=20000.00,
-                    status=TransactionHistory.StatusChoices.PENDING
+                    status=TransactionHistory.StatusChoices.PENDING,
+                    defaults={'amount': 20000.00}
                 )
                 
                 bot_username = os.getenv("BOT_USERNAME", "DevGuardBot")
@@ -609,6 +647,7 @@ class Scan(APIView):
                     "deeplink": deeplink
                 }, status=status.HTTP_402_PAYMENT_REQUIRED)
 
+        #RABBIT
         scan_record, created = ScanHistory.objects.get_or_create(
             webapp=web,
             result_summary="Chuqur skanerlash navbatda...",
