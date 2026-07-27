@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 WORKDIR /app
 
-# 1. Tizim paketlari va zaruriy utilitalarni o'rnatish
+# 1. Tizim paketlari, dos2unix va zaruriy utilitalarni o'rnatish
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     sqlmap \
@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     build-essential \
     libpq-dev \
+    dos2unix \
  && rm -rf /var/lib/apt/lists/*
 
 # 2. Nikto'ni GitHub'dan o'rnatish va tizimga symlink qilish
@@ -27,7 +28,7 @@ RUN git clone --depth=1 https://github.com/sullo/nikto.git /opt/nikto \
  && ln -s /opt/nikto/program/nikto.pl /usr/local/bin/nikto \
  && chmod +x /usr/local/bin/nikto
 
-# 3. Nuclei binarini yuklab olish va o'rnatish (Har doim barqaror va eng so'nggi)
+# 3. Nuclei binarini yuklab olish va o'rnatish
 RUN NUCLEI_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/') \
  && curl -sL "https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_amd64.zip" -o /tmp/nuclei.zip \
  && unzip /tmp/nuclei.zip -d /usr/local/bin nuclei \
@@ -42,5 +43,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # 5. Loyiha kodini ko'chirish
 COPY . .
 
-# 6. Worker'ni ishga tushirish
+# 6. Skriptlarga bajarish huquqini berish va Windows CRLF formatini Linux LF formatiga o'tkazish
+RUN if [ -d "scripts" ]; then \
+        chmod +x scripts/*.sh && \
+        dos2unix scripts/*.sh ; \
+    fi
+
+# 7. Worker'ni ishga tushirish
 CMD ["python", "services/fastapi/main.py"]
