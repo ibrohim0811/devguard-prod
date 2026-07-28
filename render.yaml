@@ -1,5 +1,5 @@
 services:
-  # 1. FastAPI Mikroservisi
+  # 1. FastAPI
   - type: web
     name: fastapi-service
     env: docker
@@ -9,8 +9,24 @@ services:
     envVars:
       - key: PORT
         value: 8000
+      - key: dpg-d9kevhnavr4c73as4spg-a
+        fromDatabase:
+          name: devguard-db
+          property: host
+      - key: devshield
+        fromDatabase:
+          name: devguard-db
+          property: database
+      - key: ibrohim
+        fromDatabase:
+          name: devguard-db
+          property: user
+      - key: IgwSxMLganrQABJ6xvRdVGeChwPAsVbF
+        fromDatabase:
+          name: devguard-db
+          property: password
 
-  # 2. Django REST Framework Mikroservisi
+  # 2. Django REST Framework
   - type: web
     name: drf-service
     env: docker
@@ -20,14 +36,26 @@ services:
     envVars:
       - key: PORT
         value: 8000
+      - key: dpg-d9kevhnavr4c73as4spg-a
+        fromDatabase:
+          name: devguard-db
+          property: host
+      - key: devshield
+        fromDatabase:
+          name: devguard-db
+          property: database
+      - key: ibrohim
+        fromDatabase:
+          name: devguard-db
+          property: user
+      - key: IgwSxMLganrQABJ6xvRdVGeChwPAsVbF
+        fromDatabase:
+          name: devguard-db
+          property: password
 
-  # 3. Telegram Bot Mikroservisi (Background Worker)
-  - type: web
-    name: telegram-bot
-    env: docker
-    dockerContext: .
-    dockerfilePath: ./services/bot/Dockerfile
+databases:
+  # Render PostgreSQL Bazasi
+  - name: devguard-db
     plan: free
-    envVars:
-      - key: PORT
-        value: 10000
+    databaseName: devguard_db
+    user: devguard_user
