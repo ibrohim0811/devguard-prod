@@ -1,5 +1,5 @@
 services:
-  # 1. FastAPI
+  # 1. FastAPI Mikroservisi
   - type: web
     name: fastapi-service
     env: docker
@@ -9,24 +9,24 @@ services:
     envVars:
       - key: PORT
         value: 8000
-      - key: dpg-d9kevhnavr4c73as4spg-a
+      - key: DB_HOST
         fromDatabase:
           name: devguard-db
           property: host
-      - key: devshield
+      - key: DB_NAME
         fromDatabase:
           name: devguard-db
           property: database
-      - key: ibrohim
+      - key: DB_USER
         fromDatabase:
           name: devguard-db
           property: user
-      - key: IgwSxMLganrQABJ6xvRdVGeChwPAsVbF
+      - key: DB_PASSWORD
         fromDatabase:
           name: devguard-db
           property: password
 
-  # 2. Django REST Framework
+  # 2. Django REST Framework Mikroservisi
   - type: web
     name: drf-service
     env: docker
@@ -36,26 +36,37 @@ services:
     envVars:
       - key: PORT
         value: 8000
-      - key: dpg-d9kevhnavr4c73as4spg-a
+      - key: DB_HOST
         fromDatabase:
           name: devguard-db
           property: host
-      - key: devshield
+      - key: DB_NAME
         fromDatabase:
           name: devguard-db
           property: database
-      - key: ibrohim
+      - key: DB_USER
         fromDatabase:
           name: devguard-db
           property: user
-      - key: IgwSxMLganrQABJ6xvRdVGeChwPAsVbF
+      - key: DB_PASSWORD
         fromDatabase:
           name: devguard-db
           property: password
+
+  # 3. Telegram Bot Mikroservisi
+  - type: web
+    name: telegram-bot
+    env: docker
+    dockerContext: .
+    dockerfilePath: ./services/bot/Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: 10000
 
 databases:
   # Render PostgreSQL Bazasi
   - name: devguard-db
     plan: free
-    databaseName: devguard_db
-    user: devguard_user
+    databaseName: devshield
+    user: ibrohim
