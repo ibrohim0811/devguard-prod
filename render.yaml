@@ -22,9 +22,12 @@ services:
         value: 8000
 
   # 3. Telegram Bot Mikroservisi (Background Worker)
-  - type: worker
+  - type: web
     name: telegram-bot
     env: docker
     dockerContext: .
     dockerfilePath: ./services/bot/Dockerfile
     plan: free
+    envVars:
+      - key: PORT
+        value: 10000
