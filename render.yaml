@@ -3,7 +3,7 @@ services:
   - type: web
     name: fastapi-service
     env: docker
-    context: .
+    dockerContext: .
     dockerfilePath: ./services/fastapi/Dockerfile
     plan: free
     envVars:
@@ -14,17 +14,17 @@ services:
   - type: web
     name: drf-service
     env: docker
-    context: .
+    dockerContext: .
     dockerfilePath: ./services/drf/Dockerfile
     plan: free
     envVars:
       - key: PORT
         value: 8000
 
-  # 3. Telegram Bot Mikroservisi (Background Worker sifatida)
+  # 3. Telegram Bot Mikroservisi (Background Worker)
   - type: worker
     name: telegram-bot
     env: docker
-    context: .
+    dockerContext: .
     dockerfilePath: ./services/bot/Dockerfile
     plan: free
