@@ -28,4 +28,4 @@ RUN useradd --no-create-home --shell /bin/false appuser \
 USER appuser
 
 # Botni ishga tushirish (papkani to'g'ri ko'rsatish)
-CMD python -m http.server $PORT & python services/bot/main.py
+CMD python services/bot/main.py
