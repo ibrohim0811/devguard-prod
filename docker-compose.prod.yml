@@ -30,7 +30,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: devshield_redis
-    command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru --timeout 0 --tcp-keepalive 60
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --timeout 0 --tcp-keepalive 60
     volumes:
       - redis_data:/data
     networks:
@@ -66,7 +66,7 @@ services:
   # ─────────────────────────────────────────
 
   django:
-    image: ghcr.io/ibrohim0811/devshield-django:latest
+    image: ghcr.io/ibrohim0811/devguard-prod-django:latest
     container_name: devshield_django
     env_file: .env
     volumes:
@@ -91,10 +91,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 512M
 
   django_asgi:
-    image: ghcr.io/ibrohim0811/devshield-django:latest
+    image: ghcr.io/ibrohim0811/devguard-prod-django:latest
     container_name: devshield_django_asgi
     command: daphne -b 0.0.0.0 -p 8000 devshield.asgi:application
     env_file: .env
@@ -115,10 +115,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 256M
 
   celery:
-    image: ghcr.io/ibrohim0811/devshield-django:latest
+    image: ghcr.io/ibrohim0811/devguard-prod-django:latest
     container_name: devshield_celery
     command: celery -A devshield worker --loglevel=info --concurrency=2
     env_file: .env
@@ -137,10 +137,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 384M
 
   fastapi_worker:
-    image: ghcr.io/ibrohim0811/devshield-fastapi-worker:latest
+    image: ghcr.io/ibrohim0811/devguard-prod-fastapi-worker:latest
     container_name: devshield_fastapi_worker
     env_file: .env
     depends_on:
@@ -154,10 +154,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 256M
 
   bot:
-    image: ghcr.io/ibrohim0811/devshield-bot:latest
+    image: ghcr.io/ibrohim0811/devguard-prod-bot:latest
     container_name: devshield_bot
     environment:
       - DJANGO_SETTINGS_MODULE=devshield.settings
@@ -180,17 +180,16 @@ services:
   #   Nginx
   # ─────────────────────────────────────────
   nginx:
-    image: ghcr.io/ibrohim0811/devshield-nginx:latest
+    image: ghcr.io/ibrohim0811/devguard-prod-nginx:latest
     container_name: devshield_nginx
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      # Oxiriga :ro,z qo'shildi (Fedora SELinux ruxsati uchun)
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro,z
-      - /etc/letsencrypt:/etc/letsencrypt:ro,z
-      - static_files:/app/staticfiles:ro,z
-      - media_files:/app/media:ro,z
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - static_files:/app/staticfiles:ro
+      - media_files:/app/media:ro
     depends_on:
       django:
         condition: service_healthy
@@ -199,7 +198,7 @@ services:
     networks:
       - devshield_network
     restart: unless-stopped
-    
+
 volumes:
   postgres_data:
   redis_data:
